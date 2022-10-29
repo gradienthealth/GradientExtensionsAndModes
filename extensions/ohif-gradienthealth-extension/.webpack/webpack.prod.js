@@ -40,6 +40,30 @@ const config = {
         amd: '@ohif/ui',
         root: '@ohif/ui',
       },
+      '@ohif/extension-cornerstone': {
+        commonjs2: '@ohif/extension-cornerstone',
+        commonjs: '@ohif/extension-cornerstone',
+        amd: '@ohif/extension-cornerstone',
+        root: '@ohif/extension-cornerstone',
+      },
+      '@ohif/extension-default': {
+        commonjs2: '@ohif/extension-default',
+        commonjs: '@ohif/extension-default',
+        amd: '@ohif/extension-default',
+        root: '@ohif/extension-default',
+      },
+      '@ohif/i18n': {
+        commonjs2: '@ohif/i18n',
+        commonjs: '@ohif/i18n',
+        amd: '@ohif/i18n',
+        root: '@ohif/i18n',
+      },
+      '@cornerstonejs/tools': {
+        commonjs2: '@cornerstonejs/tools',
+        commonjs: '@cornerstonejs/tools',
+        amd: '@cornerstonejs/tools',
+        root: '@cornerstonejs/tools',
+      },
     },
   ],
   module: {

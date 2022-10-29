@@ -1,6 +1,6 @@
 {
   "name": "@gradienthealth/ohif-gradienthealth-extension",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Gradient Health Specific OHIF extension",
   "author": "Ouwen Huang",
   "license": "MIT",
@@ -31,10 +31,12 @@
     "start": "yarn run dev"
   },
   "peerDependencies": {
+    "@cornerstonejs/tools": "^0.24.17",
     "@ohif/core": "^3.0.0",
     "@ohif/extension-cornerstone": "^3.0.0",
     "@ohif/extension-default": "^3.0.0",
     "@ohif/i18n": "^1.0.0",
+    "@ohif/ui": "^2.0.0",
     "prop-types": "^15.6.2",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
@@ -45,15 +47,7 @@
     "webpack-merge": "^5.7.3"
   },
   "dependencies": {
-    "@babel/runtime": "7.7.6",
-    "@emotion/react": "11.6.0",
-    "@emotion/styled": "11.6.0",
-    "@mui/icons-material": "^5.8.4",
-    "@mui/lab": "^5.0.0-alpha.92",
-    "@mui/material": "5.8.7",
-    "@xstate/react": "^3.0.1",
-    "react-transition-group": "4.4.2",
-    "xstate": "^4.33.6"
+    "@babel/runtime": "7.7.6"
   },
   "devDependencies": {
     "@babel/core": "^7.5.0",
@@ -66,18 +60,38 @@
     "@babel/preset-env": "^7.5.0",
     "@babel/preset-react": "^7.0.0",
     "@babel/preset-typescript": "^7.18.6",
+    "@kitware/vtk.js": "^24.18.7",
+    "@types/d3-array": "^3.0.3",
+    "@types/d3-interpolate": "^3.0.1",
     "babel-eslint": "^8.0.3",
     "babel-loader": "^8.0.0-beta.4",
     "babel-plugin-inline-react-svg": "^2.0.1",
     "clean-webpack-plugin": "^4.0.0",
     "copy-webpack-plugin": "^10.2.0",
     "cross-env": "^7.0.3",
+    "d3-array": "^3.0.3",
+    "d3-interpolate": "^3.0.1",
+    "detect-gpu": "^4.0.45",
     "dotenv": "^14.1.0",
     "eslint": "^5.0.1",
     "eslint-loader": "^2.0.0",
+    "gl-matrix": "^3.4.3",
+    "lodash.clonedeep": "4.5.0",
+    "lodash.get": "^4.4.2",
+    "prop-types": "^15.6.2",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "react-i18next": "^10.11.0",
+    "react-router": "^6.3.0",
+    "react-router-dom": "^6.3.0",
     "webpack": "^5.50.0",
     "webpack-cli": "^4.7.2",
-    "webpack-merge": "^5.7.3"
+    "webpack-merge": "^5.7.3",
+    "@emotion/react": "11.6.0",
+    "@emotion/styled": "11.6.0",
+    "@mui/icons-material": "5.8.4",
+    "@mui/lab": "5.0.0-alpha.92",
+    "@mui/material": "5.8.7"
   },
   "bugs": {
     "url": "https://github.com/OHIF/Viewers/issues"
