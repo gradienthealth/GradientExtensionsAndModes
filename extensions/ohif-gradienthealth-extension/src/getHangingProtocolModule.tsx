@@ -137,7 +137,7 @@ const breastProtocol = {
     ],
     numberOfPriorsReferenced: -1,
 };
-  
+
 function getHangingProtocolModule() {
   return [
     {

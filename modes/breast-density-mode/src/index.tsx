@@ -2,7 +2,6 @@ import hotkeys from './hotkeyBindings.js';
 import toolbarButtons from './toolbarButtons.js';
 import { id } from './id.js';
 import initToolGroups from './initToolGroups.js';
-import defaultRouteInit from './defaultRouteInit.js'
 
 console.log('gradienthealth', '@gradienthealth/breast-density-mode:0.0.2')
 const ohif = {
@@ -57,9 +56,15 @@ function modeFactory({ modeConfiguration }) {
      * Lifecycle hooks
      */
     onModeEnter: ({ servicesManager, extensionManager, commandsManager }) => {
-      const { ToolBarService, ToolGroupService, GoogleSheetsService } = servicesManager.services;
+      const { 
+        ToolBarService, 
+        ToolGroupService, 
+        GoogleSheetsService, 
+        CropDisplayAreaService
+      } = servicesManager.services;
 
       GoogleSheetsService.init();
+      CropDisplayAreaService.init();
 
       // Init Default and SR ToolGroups
       initToolGroups(extensionManager, ToolGroupService, commandsManager);
@@ -131,24 +136,6 @@ function modeFactory({ modeConfiguration }) {
     routes: [
       {
         path: 'breast',
-        init: ({ servicesManager, studyInstanceUIDs, dataSource }, hangingProtocol)=>{
-          const {
-            HangingProtocolService,
-          } = servicesManager.services;
-
-          HangingProtocolService.addCustomAttribute(
-            'ViewCodeSequence',
-            'ViewCodeSequence',
-            metaData => {
-              const viewCodeSeq = metaData["ViewCodeSequence"] ??
-              ((metaData.images || metaData.others || [])[0] || {})[
-                "ViewCodeSequence"
-              ];
-              return viewCodeSeq[0].CodeValue
-            }
-          );
-          return defaultRouteInit({ servicesManager, studyInstanceUIDs, dataSource }, hangingProtocol)
-        },
         layoutTemplate: ({ location, servicesManager }) => {
           const params = new URLSearchParams(location.search)
           const rightPanels = params.get('sheetId') ? [gradienthealth.form] : []
