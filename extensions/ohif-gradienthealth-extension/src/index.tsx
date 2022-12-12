@@ -5,6 +5,7 @@ import getHangingProtocolModule from './getHangingProtocolModule';
 import { id } from './id.js';
 import GoogleSheetsService from './services/GoogleSheetsService';
 import CropDisplayAreaService from './services/CropDisplayAreaService';
+import CacheAPIService from './services/CacheAPIService';
 
 // import { CornerstoneEventTarget } from '@cornerstonejs/core/CornerstoneEventTarget';
 // import { Events } from '@cornerstonejs/core/Events';
@@ -18,9 +19,11 @@ const gradientHealthExtension = {
   getHangingProtocolModule,
   getPanelModule,
   getViewportModule,
-  preRegistration({ servicesManager }) {
+  preRegistration({ servicesManager, commandsManager, extensionManager}) {
     servicesManager.registerService(GoogleSheetsService(servicesManager));
     servicesManager.registerService(CropDisplayAreaService(servicesManager));
+    servicesManager.registerService(CacheAPIService(servicesManager, commandsManager, extensionManager));
+
     const { HangingProtocolService } = servicesManager.services;
     HangingProtocolService.addCustomAttribute('ViewCodeSequence', 'ViewCodeSequence', metaData => {
         const viewCodeSeq = metaData["ViewCodeSequence"] ??

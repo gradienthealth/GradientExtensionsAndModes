@@ -60,11 +60,13 @@ function modeFactory({ modeConfiguration }) {
         ToolBarService, 
         ToolGroupService, 
         GoogleSheetsService, 
-        CropDisplayAreaService
+        CropDisplayAreaService,
+        CacheAPIService,
       } = servicesManager.services;
 
       GoogleSheetsService.init();
       CropDisplayAreaService.init();
+      CacheAPIService.init();
 
       // Init Default and SR ToolGroups
       initToolGroups(extensionManager, ToolGroupService, commandsManager);
@@ -116,12 +118,14 @@ function modeFactory({ modeConfiguration }) {
         MeasurementService,
         ToolBarService,
         GoogleSheetsService,
+        CacheAPIService,
       } = servicesManager.services;
       ToolBarService.reset();
       MeasurementService.clearMeasurements();
       ToolGroupService.destroy();
       SyncGroupService.destroy();
       GoogleSheetsService.destroy();
+      CacheAPIService.destroy();
     },
     validationTags: {
       study: [],
