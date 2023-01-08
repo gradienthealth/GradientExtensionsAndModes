@@ -37,6 +37,8 @@ export default class GoogleSheetsService {
     this.formTemplate = null;
     this.formValue = null;
     this.cacheWindow = 10;
+    this.changes = 0;
+    this.changeTrigger = this.cacheWindow/2;
     Object.assign(this, pubSubServiceInterface);
   }
 
@@ -210,10 +212,18 @@ export default class GoogleSheetsService {
       ).values[0];
       const index = this.formHeader.findIndex((name) => name == 'URL');
       const url = rowValues[index];
+      // Unfortuantely, there is a GPU process which seems to linger thus we are forced 
+      // to perform page refreshes. The alternative is to not exit the mode and instead
+      // https://github.com/cornerstonejs/cornerstone3D-beta/pull/253
+      // 
+      // Thus we only load 5 before forcing a refresh.
+
       const host = url.split('://')[1].split('/')[0];
-      if (host === window.location.host) {
+      if (host === window.location.host && this.changes < this.changeTrigger) {
+        this.changes += 1;
         navigate(url.split(window.location.host)[1]);
       } else {
+        this.changes = 0;
         window.location.href = url;
       }
     } catch (e) {
@@ -243,10 +253,15 @@ export default class GoogleSheetsService {
           return StudyInstanceUID;
         })
         .flat();
-
-      StudyInstanceUIDs.forEach((StudyInstanceUID) => {
-        CacheAPIService.cacheStudyImageIds(StudyInstanceUID);
-      });
+      
+      setTimeout(()=>{
+        if(StudyInstanceUIDs.length == (this.cacheWindow*2 + 1)) {
+          CacheAPIService.cacheMissingStudyImageIds(StudyInstanceUIDs.slice(1, StudyInstanceUIDs.length-1))
+          CacheAPIService.removeStudyImageIds([StudyInstanceUIDs[0], StudyInstanceUIDs[StudyInstanceUIDs.length]]);
+        } else {
+          CacheAPIService.cacheMissingStudyImageIds(StudyInstanceUIDs)
+        }
+      }, 250)
 
       return StudyInstanceUIDs;
     } catch (e) {

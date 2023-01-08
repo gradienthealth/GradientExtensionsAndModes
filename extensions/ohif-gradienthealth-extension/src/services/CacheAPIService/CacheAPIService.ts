@@ -2,6 +2,8 @@ import { pubSubServiceInterface } from '@ohif/core';
 // TODO this will be replaced by a TypeScript version in about 1 month
 import { internal } from 'cornerstone-wado-image-loader';
 import _cloneDeep from 'lodash.clonedeep';
+import _ from 'lodash';
+
 import {
   eventTarget,
   EVENTS,
@@ -87,6 +89,46 @@ export default class CacheAPIService {
     }
   }
 
+  public async getUrlsForStudyInstanceUID(StudyInstanceUID) {
+    const series = await this.dataSource.getImageIdsForStudy(
+      StudyInstanceUID
+    );
+
+    return _.flatten(series.map(s =>
+      s.map(imageId => imageId.split(':').slice(1).join(':'))
+    ));
+  }
+
+  public async getUrlsForStudyInstanceUIDs(StudyInstanceUIDs) {
+    return _.flatten(await Promise.all(StudyInstanceUIDs.map(this.getUrlsForStudyInstanceUID.bind(this))))
+  }
+
+  public requestAndCacheUrl(url){
+    const imageId = 'wadors:' + url
+    imageRetrievalPoolManager.addRequest(
+      xhrRequest.bind(
+        null,
+        url,
+        imageId,
+        {
+          Accept: 'application/octet-stream',
+        },
+        {},
+        this.options
+      ),
+      Enums.RequestType.Background,
+      { imageId },
+      0
+    );
+  }
+
+  public requestAndCacheUrls(urls){
+    const getScope = this.options.cache.getScope;
+    const keys = _.uniq(urls.map((url)=> getScope({ url })))
+    console.log('adding series to cache ', keys);
+    urls.forEach(url => this.requestAndCacheUrl(url))
+  }
+
   public async removeOldStudies(staleTime = 1 * 24 * 60 * 60 * 1000) {
     console.warn(
       'Removing studies older than ',
@@ -118,7 +160,7 @@ export default class CacheAPIService {
     return Promise.all(promises);
   }
 
-  public async cacheStudyImageIds(StudyInstanceUID) {
+  public async cacheStudyImageId(StudyInstanceUID) {
     const seriesImageIds = await this.dataSource.getImageIdsForStudy(
       StudyInstanceUID
     );
@@ -142,6 +184,38 @@ export default class CacheAPIService {
         );
       })
     );
+  }
+
+  public async cacheMissingStudyImageIds(StudyInstanceUIDs) {
+    const urls = await this.getUrlsForStudyInstanceUIDs(StudyInstanceUIDs);
+    const getScope = this.options.cache.getScope;
+    const isEqual = (a,b)=>{
+      return getScope({url: a}) == b
+    }
+    const existingKeys = await window.caches.keys();
+    this.requestAndCacheUrls(_.differenceWith(urls, existingKeys, isEqual));
+  }
+
+  public async removeCacheUrls(urls) {
+    const getScope = this.options.cache.getScope;
+    const keys = _.uniq(urls.map((url)=> getScope({ url })))
+    console.log('delete series from cache ', keys);
+    const promises = []
+    keys.forEach(key=>{
+      promises.push(window?.caches.delete(key));
+      promises.push(window?.localforage.removeItem(key));
+    })
+    return Promise.all(promises);
+  }
+
+  public async removeStudyImageId(StudyInstanceUID) {
+    const urls = await this.getUrlsForStudyInstanceUID(StudyInstanceUID)
+    return this.removeCacheUrls(urls)
+  }
+
+  public async removeStudyImageIds(StudyInstanceUIDs) {
+    const urls = await this.getUrlsForStudyInstanceUIDs(StudyInstanceUIDs)
+    return this.removeCacheUrls(urls)
   }
 
   private async handleLocalForageWriteError(evt) {

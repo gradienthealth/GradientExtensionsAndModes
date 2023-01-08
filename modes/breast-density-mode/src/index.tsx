@@ -119,6 +119,7 @@ function modeFactory({ modeConfiguration }) {
         ToolBarService,
         GoogleSheetsService,
         CacheAPIService,
+        CornerstoneViewportService,
       } = servicesManager.services;
       ToolBarService.reset();
       MeasurementService.clearMeasurements();
@@ -126,6 +127,7 @@ function modeFactory({ modeConfiguration }) {
       SyncGroupService.destroy();
       GoogleSheetsService.destroy();
       CacheAPIService.destroy();
+      CornerstoneViewportService.destroy();
     },
     validationTags: {
       study: [],

@@ -139,6 +139,7 @@ export default class CropDisplayAreaService {
           },
         }, true)
       }
+      tensor.dispose();
     }
 
     destroy() {
