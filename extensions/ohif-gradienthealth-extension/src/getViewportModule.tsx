@@ -25,6 +25,7 @@ function getViewportModule({
         servicesManager={servicesManager}
         commandsManager={commandsManager}
         extensionManager={extensionManager}
+        disableViewportOrientationMarkers={true}
         {...props}
       />
     );
