@@ -23,7 +23,7 @@ function PanelForm({ servicesManager, extensionManager }) {
   const [formTemplate, setFormTemplate] = useState(GoogleSheetsService.getFormTemplate());
   const [formValue, setFormValue] = useState(GoogleSheetsService.getFormValue());
   const [error, setError] = useState(false);
-  const prevFormValue = usePrevious(formValue);
+  const [firstLoad, setFirstLoad] = useState(true);
   const [initLoading, setInitLoading] = useState(!Boolean(formValue && formTemplate));
   const [loading, setLoading] = useState(false);
   const onNext = ()=> GoogleSheetsService.getRow(1)
@@ -35,6 +35,7 @@ function PanelForm({ servicesManager, extensionManager }) {
     const subscriptions = [];
     subscriptions.push(
       GoogleSheetsService.subscribe(GoogleSheetsService.EVENTS.GOOGLE_SHEETS_CHANGE, () => {
+        setFirstLoad(true)
         setFormValue(GoogleSheetsService.getFormValue())
         setFormTemplate(GoogleSheetsService.getFormTemplate())
         setInitLoading(false)
@@ -50,12 +51,13 @@ function PanelForm({ servicesManager, extensionManager }) {
   }, [GoogleSheetsService]);
 
   useEffect(() => {
-    if(prevFormValue){
+    if(!firstLoad){
       setLoading(true)
       GoogleSheetsService.writeFormToRow(formValue).then((values)=>{
         setLoading(false)
       })
     }
+    setFirstLoad(false)
   }, [formValue]);
 
   if(error){
