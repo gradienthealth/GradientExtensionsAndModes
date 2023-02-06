@@ -64,7 +64,7 @@ export default class GoogleSheetsService {
   setFormByStudyInstanceUID(id) {
     const index = this.studyUIDToIndex[id];
     this.setFormByIndex(index);
-    this.cacheNearbyStudyInstanceUIDs(id, 4, 16);
+    this.cacheNearbyStudyInstanceUIDs(id, 2, 32);
   }
 
   setFormByIndex(index) {
