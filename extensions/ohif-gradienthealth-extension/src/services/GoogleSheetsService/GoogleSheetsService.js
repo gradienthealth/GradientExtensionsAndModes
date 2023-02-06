@@ -1,6 +1,5 @@
-import { pubSubServiceInterface } from '@ohif/core';
+import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
 import { alphabet } from './utils';
-import { DicomMetadataStore } from '@ohif/core';
 
 const MAX_ROWS = 100000;
 
@@ -48,13 +47,29 @@ export default class GoogleSheetsService {
     Object.assign(this, pubSubServiceInterface);
   }
 
-  setFormByStudyInstanceUID(id){
-    this.setFormByIndex(this.studyUIDToIndex[id])
+  cacheNearbyStudyInstanceUIDs(id, bufferBack, bufferFront) {
+    const { CacheAPIService } = this.serviceManager.services;
+    const index = this.studyUIDToIndex[id];
+    const min = index - bufferBack < 2 ? 2 : index - bufferBack;
+    const max = index + bufferFront;
+    const urlIndex = this.formHeader.findIndex((name) => name == 'URL');
+    this.rows.slice(min, max).forEach((row) => {
+      const url = row[urlIndex];
+      const params = new URLSearchParams('?' + url.split('?')[1]);
+      const StudyInstanceUID = params.get('StudyInstanceUIDs');
+      CacheAPIService.cacheStudy(StudyInstanceUID);
+    });
   }
 
-  setFormByIndex(index){
+  setFormByStudyInstanceUID(id) {
+    const index = this.studyUIDToIndex[id];
+    this.setFormByIndex(index);
+    this.cacheNearbyStudyInstanceUIDs(id, 4, 16);
+  }
+
+  setFormByIndex(index) {
     this.index = index;
-    const rowValues = this.rows[index-1]; // google sheets is 1-indexed
+    const rowValues = this.rows[index - 1]; // google sheets is 1-indexed
     this.formValue = this.readFormValue(rowValues);
     this._broadcastEvent(EVENTS.GOOGLE_SHEETS_CHANGE);
   }
@@ -79,21 +94,21 @@ export default class GoogleSheetsService {
       this.formHeader = (await this.readRange(1, 1)).values[0];
 
       // TODO: Handle more than MAX_ROWS
-      this.rows = (await this.readRange(1, MAX_ROWS)).values
+      this.rows = (await this.readRange(1, MAX_ROWS)).values;
       this.formHeader = this.rows[0];
 
       const urlIndex = this.formHeader.findIndex((name) => name == 'URL');
-      this.studyUIDToIndex = this.rows.slice(1).reduce((prev, curr, idx)=>{
+      this.studyUIDToIndex = this.rows.slice(1).reduce((prev, curr, idx) => {
         const url = curr[urlIndex];
-        const params = new URLSearchParams('?' + url.split('?')[1])
+        const params = new URLSearchParams('?' + url.split('?')[1]);
         const StudyInstanceUID = params.get('StudyInstanceUIDs');
 
         // Google Sheets is 1-indexed and we ignore first row as header row thus + 2
-        prev[StudyInstanceUID] = idx + 2
-        return prev
-      }, {})
+        prev[StudyInstanceUID] = idx + 2;
+        return prev;
+      }, {});
 
-      this.index = this.studyUIDToIndex[params.get('StudyInstanceUIDs')]
+      this.index = this.studyUIDToIndex[params.get('StudyInstanceUIDs')];
 
       // Map formTemplate and formValue
       const values = this.settings.values[0].map((_, colIndex) =>
@@ -128,7 +143,7 @@ export default class GoogleSheetsService {
         })
         .sort((a, b) => a.order - b.order);
 
-      this.setFormByStudyInstanceUID(params.get('StudyInstanceUIDs'))
+      this.setFormByStudyInstanceUID(params.get('StudyInstanceUIDs'));
     } catch (e) {
       console.error(e);
       this._broadcastEvent(EVENTS.GOOGLE_SHEETS_ERROR);
@@ -144,8 +159,13 @@ export default class GoogleSheetsService {
     });
   }
 
-  async readRange(min, max, sheetId=this.sheetId, sheetName=this.sheetName ) {
-    const range = `A${min}:ZZ${max}`
+  async readRange(
+    min,
+    max,
+    sheetId = this.sheetId,
+    sheetName = this.sheetName
+  ) {
+    const range = `A${min}:ZZ${max}`;
     const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${sheetName}!${range}`;
     const response = await fetch(baseUrl, {
       headers: {
@@ -224,31 +244,42 @@ export default class GoogleSheetsService {
 
   async getRow(delta) {
     try {
-      const { DisplaySetService, HangingProtocolService } = this.serviceManager.services
-      const rowValues = this.rows[this.index + delta - 1]
-      const index = this.formHeader.findIndex((name) => name == 'URL');
-      const url = rowValues[index];
-      const params = new URLSearchParams('?' + url.split('?')[1])
-      const StudyInstanceUID = params.get('StudyInstanceUIDs');
-      if(!StudyInstanceUID){
+      const { DisplaySetService, HangingProtocolService, CacheAPIService } =
+        this.serviceManager.services;
+      const rowValues = this.rows[this.index + delta - 1];
+      if (!rowValues) {
         window.location.href = `https://docs.google.com/spreadsheets/d/${this.sheetId}`;
       }
-      const dataSource = this.extensionManager.getActiveDataSource()[0]
-      await dataSource.retrieve.series.metadata({ StudyInstanceUID})
-      const studies = [DicomMetadataStore.getStudy(StudyInstanceUID)]
-      HangingProtocolService.run({
-        studies, 
-        activeStudy: studies[0], 
-        displaySets: DisplaySetService.getActiveDisplaySets().filter(ele=>{
-          return ele.StudyInstanceUID === StudyInstanceUID
-        })
-      }, 'breast');
+      const index = this.formHeader.findIndex((name) => name == 'URL');
+      const url = rowValues[index];
+      const params = new URLSearchParams('?' + url.split('?')[1]);
+      const StudyInstanceUID = params.get('StudyInstanceUIDs');
+      if (!StudyInstanceUID) {
+        window.location.href = `https://docs.google.com/spreadsheets/d/${this.sheetId}`;
+      }
+      const dataSource = this.extensionManager.getActiveDataSource()[0];
+      await dataSource.retrieve.series.metadata({ StudyInstanceUID });
+      const studies = [DicomMetadataStore.getStudy(StudyInstanceUID)];
+      HangingProtocolService.run(
+        {
+          studies,
+          activeStudy: studies[0],
+          displaySets: DisplaySetService.getActiveDisplaySets().filter(
+            (ele) => {
+              return ele.StudyInstanceUID === StudyInstanceUID;
+            }
+          ),
+        },
+        'breast'
+      );
 
-      const nextParams = new URLSearchParams(window.location.search)
-      nextParams.set('StudyInstanceUIDs', StudyInstanceUID)
-      const nextURL = window.location.href.split('?')[0] + '?' + nextParams.toString()
+      const nextParams = new URLSearchParams(window.location.search);
+      nextParams.set('StudyInstanceUIDs', StudyInstanceUID);
+      const nextURL =
+        window.location.href.split('?')[0] + '?' + nextParams.toString();
       window.history.replaceState({}, null, nextURL);
-      this.setFormByStudyInstanceUID(StudyInstanceUID)
+      this.setFormByStudyInstanceUID(StudyInstanceUID);
+      CacheAPIService.setViewedStudy(StudyInstanceUID);
     } catch (e) {
       console.error(e);
     }
