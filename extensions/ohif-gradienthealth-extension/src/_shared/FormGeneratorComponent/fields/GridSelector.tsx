@@ -8,6 +8,10 @@ import Radio from '@mui/material/Radio';
 export default function GridSelector({ formIndex, name, value, defaultValue, options, onChange }) {
   const { labels, cols } = options
   const [val, setVal] = React.useState(value !== null ? value : defaultValue);  
+  React.useEffect(()=>{
+    setVal(value !== null ? value : defaultValue)
+  }, [value])
+
   return (
     <Paper className='p-2'>
       <div>

@@ -8,7 +8,6 @@ import ArrowBack from '@mui/icons-material/ArrowBack';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import ButtonGroup from '@mui/material/ButtonGroup';
-import { useNavigate } from "react-router-dom";
 import debounce from 'lodash.debounce';
 
 function usePrevious(value) {
@@ -27,20 +26,15 @@ function PanelForm({ servicesManager, extensionManager }) {
   const prevFormValue = usePrevious(formValue);
   const [initLoading, setInitLoading] = useState(!Boolean(formValue && formTemplate));
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-  const onNext = ()=>{
-    GoogleSheetsService.getRow(navigate, 1)
-  }
-  const onPrevious = ()=>{
-    GoogleSheetsService.getRow(navigate, -1)
-  }
+  const onNext = ()=> GoogleSheetsService.getRow(1)
+  const onPrevious = ()=> GoogleSheetsService.getRow(-1)
   const debouncedOnNext = useMemo(() => debounce(onNext, 300), []);
   const debouncedOnPrevious = useMemo(() => debounce(onPrevious, 300), []);
 
   useEffect(() => {
     const subscriptions = [];
     subscriptions.push(
-      GoogleSheetsService.subscribe(GoogleSheetsService.EVENTS.GOOGLE_SHEETS_INIT, () => {
+      GoogleSheetsService.subscribe(GoogleSheetsService.EVENTS.GOOGLE_SHEETS_CHANGE, () => {
         setFormValue(GoogleSheetsService.getFormValue())
         setFormTemplate(GoogleSheetsService.getFormTemplate())
         setInitLoading(false)

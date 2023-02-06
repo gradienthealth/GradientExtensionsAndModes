@@ -7,7 +7,6 @@ import DisplayValue from './fields/DisplayValue'
 import UserProfile from './fields/UserProfile'
 
 function FormGeneratorComponent({ formTemplate, formValue, setFormValue }) {
-
   const onChangeHandler = ({formIndex, value}) => {
     const newFormValue = [...formValue]
     newFormValue[formIndex] = value

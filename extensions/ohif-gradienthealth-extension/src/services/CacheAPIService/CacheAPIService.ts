@@ -116,7 +116,7 @@ export default class CacheAPIService {
         {},
         this.options
       ),
-      Enums.RequestType.Background,
+      Enums.RequestType.Prefetch,
       { imageId },
       0
     );

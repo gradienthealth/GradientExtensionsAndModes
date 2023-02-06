@@ -6,6 +6,7 @@ import {
 } from '@cornerstonejs/core';
 
 import * as tf from '@tensorflow/tfjs';
+import { IStackViewport } from '@cornerstonejs/core/dist/esm/types';
 
 const EVENTS = {
     CROP_DISPLAY_AREA_INIT: 'event::gradienthealth::CropDisplayAreaService:init',
@@ -21,7 +22,6 @@ export default class CropDisplayAreaService {
         this.listeners = {};
         this.EVENTS = EVENTS;
         Object.assign(this, pubSubServiceInterface);
-        window.tf = tf;
     }
 
     init(){
@@ -38,8 +38,17 @@ export default class CropDisplayAreaService {
       const viewport = enabledElement?.viewport
       if(!viewport) return
 
-      const { voiRange, invert } = viewport.getProperties()
-      if((!voiRange.lower && !invert) || !voiRange.upper && invert) return
+      const { voiRange, invert } = (viewport as IStackViewport).getProperties()
+      let cutoff;
+      if (voiRange?.lower && !invert) {
+        cutoff = voiRange?.lower
+      }
+      if(voiRange?.upper && invert){
+        cutoff = voiRange?.upper
+      }
+      if (!cutoff){
+        return
+      }
 
       const viewportIdx = parseInt(viewportId.split('-')[1])
       const matchedDisplaySets = Array.from(HangingProtocolService.displaySetMatchDetails.keys())
@@ -55,8 +64,8 @@ export default class CropDisplayAreaService {
       // imageData.direction
       // interesting that dim[1], dim[0] are reversed for vtk.js => tf.js
       // assume this direction does not change
-      const tensor = tf.tensor2d(scalarData, [dimensions[1], dimensions[0]]);
-      const mask = tensor.greater(voiRange.lower) // get boolean
+      const tensor = tf.tensor2d(new Float32Array(scalarData), [dimensions[1], dimensions[0]]);
+      const mask = tensor.greater(cutoff) // get boolean
       const widthBool = mask.any(0) // height?
       const heightBool = mask.any(1) // width?
 

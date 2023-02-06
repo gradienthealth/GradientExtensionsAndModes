@@ -20,7 +20,7 @@ const gradientHealthExtension = {
   getPanelModule,
   getViewportModule,
   preRegistration({ servicesManager, commandsManager, extensionManager}) {
-    servicesManager.registerService(GoogleSheetsService(servicesManager));
+    servicesManager.registerService(GoogleSheetsService(servicesManager, commandsManager, extensionManager));
     servicesManager.registerService(CropDisplayAreaService(servicesManager));
     servicesManager.registerService(CacheAPIService(servicesManager, commandsManager, extensionManager));
 
