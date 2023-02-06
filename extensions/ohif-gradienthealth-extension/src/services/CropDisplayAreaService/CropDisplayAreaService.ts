@@ -21,6 +21,7 @@ export default class CropDisplayAreaService {
         this.serviceManager = serviceManager;
         this.listeners = {};
         this.EVENTS = EVENTS;
+        window.tf = tf;
         Object.assign(this, pubSubServiceInterface);
     }
 
@@ -30,7 +31,7 @@ export default class CropDisplayAreaService {
         if(HangingProtocolService.protocol.id === 'breast') this.handleBreastDensityHP(evt)
       })
     }
-    
+
     private handleBreastDensityHP(evt){
       const { HangingProtocolService } = this.serviceManager.services
       const { element, viewportId } = evt.detail
@@ -64,20 +65,32 @@ export default class CropDisplayAreaService {
       // imageData.direction
       // interesting that dim[1], dim[0] are reversed for vtk.js => tf.js
       // assume this direction does not change
-      const tensor = tf.tensor2d(new Float32Array(scalarData), [dimensions[1], dimensions[0]]);
-      const mask = tensor.greater(cutoff) // get boolean
-      const widthBool = mask.any(0) // height?
-      const heightBool = mask.any(1) // width?
+      const { bboxWidth, bboxHeight, width, height } = tf.tidy(()=>{
+        const tensor = tf.tensor2d(new Float32Array(scalarData), [dimensions[1], dimensions[0]]);
+        const mask = tensor.greater(cutoff) // get boolean
+        const widthBool = mask.any(0) // height?
+        const heightBool = mask.any(1) // width?
+  
+        // get bbox
+        const left = widthBool.argMax()
+        const right = widthBool.reverse().argMax().mul(-1).add(widthBool.size)
+        const top = heightBool.argMax()
+        const bottom = heightBool.reverse().argMax().mul(-1).add(heightBool.size)
+  
+        // get percentage difference in width and height
+        const bboxWidth = right.sub(left).dataSync()[0]
+        const bboxHeight = bottom.sub(top).dataSync()[0]
+        const width = widthBool.size
+        const height = heightBool.size
 
-      // get bbox
-      const left = widthBool.argMax()
-      const right = widthBool.reverse().argMax().mul(-1).add(widthBool.size)
-      const top = heightBool.argMax()
-      const bottom = heightBool.reverse().argMax().mul(-1).add(heightBool.size)
+        return {
+          bboxWidth,
+          bboxHeight,
+          width,
+          height
+        }
+      });
 
-      // get percentage difference in width and height
-      const bboxWidth = right.sub(left).dataSync()[0]
-      const bboxHeight = bottom.sub(top).dataSync()[0]
       const bboxAspectRatio = bboxWidth/bboxHeight
       const canvasAspectRatio = viewport.sWidth / viewport.sHeight;
       // console.log({bboxAspectRatio, canvasAspectRatio})
@@ -87,8 +100,6 @@ export default class CropDisplayAreaService {
       //   console.log('changed', {bboxAspectRatio, canvasAspectRatio})
       // }
 
-      const width = widthBool.size
-      const height = heightBool.size
       const bboxWidthPercentage = (bboxWidth/width) // add buffer
       const bboxHeightPercentage = (bboxHeight/height)
       
@@ -97,7 +108,6 @@ export default class CropDisplayAreaService {
       const panAmount = (1-areaZoom)/2
 
       if(matchedDisplaySet === 'LMLO'){
-        window.viewport_lmlo = viewport
         viewport.setDisplayArea({
           imageArea: {
             areaX: areaZoom,
@@ -110,7 +120,6 @@ export default class CropDisplayAreaService {
         }, true)
       }
       if(matchedDisplaySet === 'RMLO'){
-        window.viewport_rmlo = viewport
         viewport.setDisplayArea({
           imageArea: {
             areaX: areaZoom,
@@ -123,7 +132,6 @@ export default class CropDisplayAreaService {
         }, true)
       }
       if(matchedDisplaySet === 'LCC'){
-        window.viewport_lcc = viewport
         viewport.setDisplayArea({
           imageArea: {
             areaX: areaZoom,
@@ -136,7 +144,6 @@ export default class CropDisplayAreaService {
         }, true)
       }
       if(matchedDisplaySet === 'RCC'){
-        window.viewport_rcc = viewport
         viewport.setDisplayArea({
           imageArea: {
             areaX: areaZoom,
@@ -148,7 +155,6 @@ export default class CropDisplayAreaService {
           },
         }, true)
       }
-      tensor.dispose();
     }
 
     destroy() {
