@@ -141,7 +141,7 @@ const breastProtocol = {
 function getHangingProtocolModule() {
   return [
     {
-      id: breastProtocol.id,
+      name: breastProtocol.id,
       protocol: breastProtocol,
     },
   ];

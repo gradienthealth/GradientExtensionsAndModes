@@ -1,6 +1,7 @@
 import getPanelModule from './getPanelModule';
 import getViewportModule from './getViewportModule';
 import getHangingProtocolModule from './getHangingProtocolModule';
+import getDataSourcesModule from './getDataSourcesModule';
 
 import { id } from './id.js';
 import GoogleSheetsService from './services/GoogleSheetsService';
@@ -10,12 +11,14 @@ import CacheAPIService from './services/CacheAPIService';
 // import { CornerstoneEventTarget } from '@cornerstonejs/core/CornerstoneEventTarget';
 // import { Events } from '@cornerstonejs/core/Events';
 
-console.log('gradienthealth', '@gradienthealth/ohif-gradienthealth-extension@0.3.0')
 const gradientHealthExtension = {
   /**
    * Only required property. Should be a unique value across all extensions.
    */
   id,
+  getDataSourcesModule: ({ servicesManager }) => {
+    return getDataSourcesModule({ servicesManager });
+  },
   getHangingProtocolModule,
   getPanelModule,
   getViewportModule,

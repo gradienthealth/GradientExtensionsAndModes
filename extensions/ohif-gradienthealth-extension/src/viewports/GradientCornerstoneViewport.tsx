@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import OHIF, { utils } from '@ohif/core';
+import JSZip from 'jszip';
+import _ from 'lodash';
 
 import {
   Notification,
   ViewportActionBar,
-  useCine,
-  useViewportGrid,
   useViewportDialog,
+  Icon,
 } from '@ohif/ui';
 
-import { annotation } from '@cornerstonejs/tools';
+import { useTranslation } from 'react-i18next';
+import { display } from '@mui/system';
 
 const { formatDate } = utils;
 
@@ -23,21 +25,23 @@ function GradientCornerstoneViewport(props) {
     servicesManager,
     extensionManager,
     commandsManager,
+    viewportOptions,
   } = props;
 
+  const { t } = useTranslation('GradientCornerstoneViewport');
+
   const {
-    CornerstoneViewportService,
+    measurementService,
+    cornerstoneViewportService,
+    userAuthenticationService,
+    UINotificationService,
   } = servicesManager.services;
 
   // Todo: handling more than one displaySet on the same viewport
   const displaySet = displaySets[0];
 
-  const [{ activeViewportIndex }] = useViewportGrid();
-  const [{ isCineEnabled, cines }, cineService] = useCine();
   const [viewportDialogState] = useViewportDialog();
-  const [element, setElement] = useState(null);
-
-  const viewportId = CornerstoneViewportService.getViewportId(viewportIndex);
+  const viewportId = viewportOptions.viewportId;
 
   const {
     Modality,
@@ -57,61 +61,91 @@ function GradientCornerstoneViewport(props) {
     ManufacturerModelName,
   } = displaySet.images[0];
 
-  useEffect(() => {
-    annotation.config.style.setViewportToolStyles(`viewport-${viewportIndex}`, {
-      global: {
-        lineDash: '',
-      },
-    });
-
-    CornerstoneViewportService.getRenderingEngine().renderViewport(viewportId);
-
-    return () => {
-      annotation.config.style.setViewportToolStyles(viewportId, {});
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!cines || !cines[viewportIndex]) {
-      return;
-    }
-
-    const cine = cines[viewportIndex];
-    const isPlaying = (cine && cine.isPlaying) || false;
-    const frameRate = (cine && cine.frameRate) || 24;
-
-    const validFrameRate = Math.max(frameRate, 1);
-
-    if (isPlaying) {
-      cineService.playClip(element, {
-        framesPerSecond: validFrameRate,
-      });
-    } else {
-      cineService.stopClip(element);
-    }
-  }, [cines, viewportIndex, cineService, element, displaySet]);
-
-
-  /**
-   * OnElementEnabled callback which is called after the cornerstoneExtension
-   * has enabled the element. Note: we delegate all the image rendering to
-   * cornerstoneExtension, so we don't need to do anything here regarding
-   * the image rendering, element enabling etc.
-   */
-  const onElementEnabled = evt => {
-    setElement(evt.detail.element);
-  };
-
   const getCornerstoneViewport = () => {
     const { component: Component } = extensionManager.getModuleEntry(
       '@ohif/extension-cornerstone.viewportModule.cornerstone'
     );
 
-    return <Component {...props} onElementEnabled={onElementEnabled} />;
+    return <Component {...props} />;
   };
 
-  const cine = cines[viewportIndex];
-  const isPlaying = (cine && cine.isPlaying) || false;
+  const downloadStudy = () => {
+    UINotificationService.show({
+      title: 'Download',
+      message: `Downloading ${displaySet['SeriesInstanceUID']}...`,
+      type: 'warn',
+    });
+
+    const urls = _.uniq(displaySet.instances.map(ele=>ele.url.split('dicomweb:')[1]));
+    async function downloadFilesAndCreateZip(fileUrls) {
+      try {
+        // Download all files in parallel
+        const files = await Promise.all(fileUrls.map(async (url) => {
+          const response = await fetch(url, { 
+            headers: userAuthenticationService.getAuthorizationHeader() 
+          });
+          if (response.ok) {
+            const blob = await response.blob();
+            return { filename: displaySet['SeriesInstanceUID'] + url.split(`${displaySet['SeriesInstanceUID']}`).slice(-1), blob };
+          } else {
+            throw new Error(`Error downloading file: ${url}`);
+          }
+        }));
+    
+        // Create a zip object
+        const zip = new JSZip();
+        files.forEach(file => zip.file(file.filename, file.blob))
+    
+        // Generate the zip file and trigger a download in the browser
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const zipUrl = URL.createObjectURL(zipBlob);
+        const link = document.createElement('a');
+        link.href = zipUrl;
+        link.download = `${displaySet['SeriesInstanceUID']}.zip`;
+        link.click();
+        URL.revokeObjectURL(zipUrl);
+      } catch (error) {
+        console.error('Error downloading files:', error);
+      }
+    }
+
+    downloadFilesAndCreateZip(urls)
+      .then(()=>{
+        UINotificationService.show({
+          title: 'Download',
+          message: `Downloaded ${displaySet['SeriesInstanceUID']}`,
+          type: 'success',
+        });
+      })
+      .catch((err)=>{
+        UINotificationService.show({
+          title: 'Download',
+          message: `Could not downlad ${displaySet['SeriesInstanceUID']}`,
+          type: 'error',
+        });
+      });
+  }
+
+  const copySeriesInstanceUIDToClipBoard = ()=>{
+    navigator.clipboard.writeText(displaySet['SeriesInstanceUID'])
+      .then(() => {
+        UINotificationService.show({
+          title: 'Copy to Clipboard',
+          message: 'Copied SeriesInstanceUID to Clipboard',
+          type: 'success',
+        });
+      })
+      .catch((err) => {
+        console.error(err);
+        UINotificationService.show({
+          title: 'Copy to Clipboard',
+          message: 'Could not copy SeriesInstanceUID to Clipboard',
+          type: 'error',
+        });
+      });
+  }
+  const arrowClasses =
+    'cursor-pointer shrink-0 mr-2 text-white hover:text-primary-light';
 
   return (
     <>
@@ -120,19 +154,19 @@ function GradientCornerstoneViewport(props) {
           evt.stopPropagation();
           evt.preventDefault();
         }}
-        onSeriesChange={()=>{}}
+        onArrowsClick={(direction) => {
+          if(direction === 'down') {
+            downloadStudy();
+          }
+        }}
+        getStatusComponent={() => console.log('status')}
         studyData={{
           label: viewportLabel,
-          isRehydratable: false,
           studyDate: formatDate(SeriesDate), // TODO: This is series date. Is that ok?
-          currentSeries: String(SeriesNumber), // TODO - switch entire currentSeries to be UID based or actual position based
+          currentSeries: SeriesNumber, // TODO - switch entire currentSeries to be UID based or actual position based
           seriesDescription: SeriesDescription,
-          modality: Modality,
-          isTracked: true,
           patientInformation: {
-            patientName: PatientName
-              ? OHIF.utils.formatPN(PatientName.Alphabetic)
-              : '',
+            patientName: PatientName ? OHIF.utils.formatPN(PatientName) : '',
             patientSex: PatientSex || '',
             patientAge: PatientAge || '',
             MRN: PatientID || '',
@@ -146,24 +180,21 @@ function GradientCornerstoneViewport(props) {
             scanner: ManufacturerModelName || '',
           },
         }}
-        showNavArrows={false}
-        showStatus={false}
-        showCine={isCineEnabled}
-        cineProps={{
-          isPlaying,
-          onClose: () => commandsManager.runCommand('toggleCine'),
-          onPlayPauseChange: isPlaying =>
-            cineService.setCine({
-              id: activeViewportIndex,
-              isPlaying,
-            }),
-          onFrameRateChange: frameRate =>
-            cineService.setCine({
-              id: activeViewportIndex,
-              frameRate,
-            }),
-        }}
-      />
+      >
+        <Icon
+          className={`${arrowClasses}`}
+          name="arrow-down"
+          onClick={downloadStudy}
+        />
+        <Icon
+          className={`${arrowClasses}`}
+          style={{
+            height: "16px"
+          }}
+          name="clipboard"
+          onClick={copySeriesInstanceUIDToClipBoard}
+        />
+      </ViewportActionBar>
       {/* TODO: Viewport interface to accept stack or layers of content like this? */}
       <div className="relative flex flex-row w-full h-full overflow-hidden">
         {getCornerstoneViewport()}
