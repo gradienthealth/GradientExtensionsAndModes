@@ -119,7 +119,7 @@ function PanelMeasurementTableTracking({ servicesManager, extensionManager }) {
   }
 
   const jumpToImage = ({ uid, isActive }) => {
-    MeasurementService.jumpToMeasurement(viewportGrid.activeViewportIndex, uid);
+    MeasurementService.jumpToMeasurement(viewportGrid.activeViewportId, uid);
 
     onMeasurementItemClickHandler({ uid, isActive });
   };

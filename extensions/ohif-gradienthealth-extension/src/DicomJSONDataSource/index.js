@@ -18,6 +18,7 @@ const mappings = {
 
 let _store = {
   urls: [],
+  studyInstanceUIDMap: new Map(), // map of urls to array of study instance UIDs
   // {
   //   url: url1
   //   studies: [Study1, Study2], // if multiple studies
@@ -32,6 +33,22 @@ let _store = {
 const getMetaDataByURL = url => {
   return _store.urls.find(metaData => metaData.url === url);
 };
+
+const getInstanceUrl = (url, prefix) => {
+  let modifiedUrl = prefix
+    ? url.replace(
+      'https://storage.googleapis.com',
+      `https://storage.googleapis.com/${prefix}`
+    )
+    : url;
+
+  const dicomwebRegex = /^dicomweb:/
+  modifiedUrl = modifiedUrl.includes(":zip//")
+    ? modifiedUrl.replace(dicomwebRegex, 'dicomzip:')
+    : modifiedUrl;
+
+  return modifiedUrl;
+}
 
 const getMetadataFromRows = (rows, prefix, seriesuidArray) => {
   // TODO: bq should not have dups
@@ -74,12 +91,7 @@ const getMetadataFromRows = (rows, prefix, seriesuidArray) => {
         instances: row['instances'].map(instance => {
           return {
             metadata: instance.metadata,
-            url: prefix
-              ? instance.url.replace(
-                  'https://storage.googleapis.com',
-                  `https://storage.googleapis.com/${prefix}`
-                )
-              : instance.url,
+            url: getInstanceUrl(instance.url, prefix),
           };
         }),
       };
@@ -236,9 +248,6 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
         query.get('prefix'), 
         query.getAll('SeriesInstanceUID')
       );      
-      const studyInstanceUIDs = data.studies.map(
-        study => study.StudyInstanceUID
-      );
 
       let StudyInstanceUID;
       let SeriesInstanceUID;
@@ -266,7 +275,10 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
         studies: [...data.studies],
       });
 
-      return studyInstanceUIDs;
+      _store.studyInstanceUIDMap.set(
+        url,
+        data.studies.map(study => study.StudyInstanceUID)
+      );
     },
     query: {
       studies: {
@@ -420,6 +432,11 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
         frame,
       });
       return imageIds;
+    },
+
+    getStudyInstanceUIDs: ({ params, query }) => {
+      const url = query.get('url');
+      return _store.studyInstanceUIDMap.get(url);
     },
   };
   return IWebApiDataSource.create(implementation);

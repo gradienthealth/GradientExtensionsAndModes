@@ -29,7 +29,7 @@ function PanelStudyBrowserTracking({
   // Tabs --> Studies --> DisplaySets --> Thumbnails
   const { StudyInstanceUIDs } = useImageViewer();
   const [
-    { activeViewportIndex, viewports, numCols, numRows },
+    { activeViewportId, viewports, numCols, numRows },
     viewportGridService,
   ] = useViewportGrid();
 
@@ -42,15 +42,15 @@ function PanelStudyBrowserTracking({
   const [thumbnailImageSrcMap, setThumbnailImageSrcMap] = useState({});
   const [jumpToDisplaySet, setJumpToDisplaySet] = useState(null);
 
-  const onDoubleClickThumbnailHandler = displaySetInstanceUID => {
+  const onDoubleClickThumbnailHandler = (displaySetInstanceUID) => {
     viewportGridService.setDisplaySetsForViewport({
-      viewportIndex: activeViewportIndex,
+      viewportId: activeViewportId,
       displaySetInstanceUIDs: [displaySetInstanceUID],
     });
   };
 
   const activeViewportDisplaySetInstanceUIDs =
-    viewports[activeViewportIndex]?.displaySetInstanceUIDs;
+    viewports[activeViewportId]?.displaySetInstanceUIDs;
 
   const isSingleViewport = numCols === 1 && numRows === 1;
 
@@ -59,7 +59,7 @@ function PanelStudyBrowserTracking({
     const addedRaw = MeasurementService.EVENTS.RAW_MEASUREMENT_ADDED;
     const subscriptions = [];
 
-    [added, addedRaw].forEach(evt => {
+    [added, addedRaw].forEach((evt) => {
       subscriptions.push(
         MeasurementService.subscribe(evt, ({ source, measurement }) => {
           const {
@@ -71,11 +71,11 @@ function PanelStudyBrowserTracking({
     });
 
     return () => {
-      subscriptions.forEach(unsub => {
+      subscriptions.forEach((unsub) => {
         unsub();
       });
     };
-  }, [MeasurementService, activeViewportIndex]);
+  }, [MeasurementService, activeViewportId]);
 
   // ~~ studyDisplayList
   useEffect(() => {

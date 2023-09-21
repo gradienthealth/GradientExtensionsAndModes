@@ -20,7 +20,7 @@ function GradientCornerstoneViewport(props) {
   const {
     children,
     displaySets,
-    viewportIndex,
+    viewportId,
     viewportLabel,
     servicesManager,
     extensionManager,
@@ -41,7 +41,6 @@ function GradientCornerstoneViewport(props) {
   const displaySet = displaySets[0];
 
   const [viewportDialogState] = useViewportDialog();
-  const viewportId = viewportOptions.viewportId;
 
   const {
     Modality,
@@ -76,26 +75,35 @@ function GradientCornerstoneViewport(props) {
       type: 'warn',
     });
 
-    const urls = _.uniq(displaySet.instances.map(ele=>ele.url.split('dicomweb:')[1]));
+    const urls = _.uniq(
+      displaySet.instances.map((ele) => ele.url.split('dicomweb:')[1])
+    );
     async function downloadFilesAndCreateZip(fileUrls) {
       try {
         // Download all files in parallel
-        const files = await Promise.all(fileUrls.map(async (url) => {
-          const response = await fetch(url, { 
-            headers: userAuthenticationService.getAuthorizationHeader() 
-          });
-          if (response.ok) {
-            const blob = await response.blob();
-            return { filename: displaySet['SeriesInstanceUID'] + url.split(`${displaySet['SeriesInstanceUID']}`).slice(-1), blob };
-          } else {
-            throw new Error(`Error downloading file: ${url}`);
-          }
-        }));
-    
+        const files = await Promise.all(
+          fileUrls.map(async (url) => {
+            const response = await fetch(url, {
+              headers: userAuthenticationService.getAuthorizationHeader(),
+            });
+            if (response.ok) {
+              const blob = await response.blob();
+              return {
+                filename:
+                  displaySet['SeriesInstanceUID'] +
+                  url.split(`${displaySet['SeriesInstanceUID']}`).slice(-1),
+                blob,
+              };
+            } else {
+              throw new Error(`Error downloading file: ${url}`);
+            }
+          })
+        );
+
         // Create a zip object
         const zip = new JSZip();
-        files.forEach(file => zip.file(file.filename, file.blob))
-    
+        files.forEach((file) => zip.file(file.filename, file.blob));
+
         // Generate the zip file and trigger a download in the browser
         const zipBlob = await zip.generateAsync({ type: 'blob' });
         const zipUrl = URL.createObjectURL(zipBlob);
@@ -110,24 +118,25 @@ function GradientCornerstoneViewport(props) {
     }
 
     downloadFilesAndCreateZip(urls)
-      .then(()=>{
+      .then(() => {
         UINotificationService.show({
           title: 'Download',
           message: `Downloaded ${displaySet['SeriesInstanceUID']}`,
           type: 'success',
         });
       })
-      .catch((err)=>{
+      .catch((err) => {
         UINotificationService.show({
           title: 'Download',
           message: `Could not downlad ${displaySet['SeriesInstanceUID']}`,
           type: 'error',
         });
       });
-  }
+  };
 
-  const copySeriesInstanceUIDToClipBoard = ()=>{
-    navigator.clipboard.writeText(displaySet['SeriesInstanceUID'])
+  const copySeriesInstanceUIDToClipBoard = () => {
+    navigator.clipboard
+      .writeText(displaySet['SeriesInstanceUID'])
       .then(() => {
         UINotificationService.show({
           title: 'Copy to Clipboard',
@@ -143,19 +152,19 @@ function GradientCornerstoneViewport(props) {
           type: 'error',
         });
       });
-  }
+  };
   const arrowClasses =
     'cursor-pointer shrink-0 mr-2 text-white hover:text-primary-light';
 
   return (
     <>
       <ViewportActionBar
-        onDoubleClick={evt => {
+        onDoubleClick={(evt) => {
           evt.stopPropagation();
           evt.preventDefault();
         }}
         onArrowsClick={(direction) => {
-          if(direction === 'down') {
+          if (direction === 'down') {
             downloadStudy();
           }
         }}
@@ -189,7 +198,7 @@ function GradientCornerstoneViewport(props) {
         <Icon
           className={`${arrowClasses}`}
           style={{
-            height: "16px"
+            height: '16px',
           }}
           name="clipboard"
           onClick={copySeriesInstanceUIDToClipBoard}
@@ -199,7 +208,7 @@ function GradientCornerstoneViewport(props) {
       <div className="relative flex flex-row w-full h-full overflow-hidden">
         {getCornerstoneViewport()}
         <div className="absolute w-full">
-          {viewportDialogState.viewportIndex === viewportIndex && (
+          {viewportDialogState.viewportId === viewportId && (
             <Notification
               id={viewportDialogState.id}
               message={viewportDialogState.message}
@@ -217,7 +226,7 @@ function GradientCornerstoneViewport(props) {
 
 GradientCornerstoneViewport.propTypes = {
   displaySets: PropTypes.arrayOf(PropTypes.object.isRequired).isRequired,
-  viewportIndex: PropTypes.number.isRequired,
+  viewportId: PropTypes.number.isRequired,
   dataSource: PropTypes.object,
   children: PropTypes.node,
   customProps: PropTypes.object,
