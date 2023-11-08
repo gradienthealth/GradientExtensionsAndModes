@@ -223,6 +223,7 @@ const mapSegSeriesFromDataSet = (dataSet) => {
     instances: [
       {
         metadata: {
+          FrameOfReferenceUID: dataSet.FrameOfReferenceUID,
           SOPInstanceUID: dataSet.SOPInstanceUID,
           SOPClassUID: dataSet.SOPClassUID,
           ReferencedSeriesSequence: dataSet.ReferencedSeriesSequence,
