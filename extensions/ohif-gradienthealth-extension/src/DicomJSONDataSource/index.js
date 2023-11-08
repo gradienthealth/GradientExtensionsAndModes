@@ -485,7 +485,7 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
     },
     store: {
       dicom: async (dataset) => {
-        if (dataset.Modality === 'SEGss') {
+        if (dataset.Modality === 'SEG') {
           const headers = servicesManager.services.UserAuthenticationService.getAuthorizationHeader()
           try {
             await storeDicomSeg(dataset, headers)
