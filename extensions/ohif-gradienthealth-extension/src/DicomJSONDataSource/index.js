@@ -216,9 +216,6 @@ const mapSegSeriesFromDataSet = (dataSet) => {
     SeriesDescription: dataSet.SeriesDescription,
     SeriesNumber: Number(dataSet.SeriesNumber),
     SeriesDate: dataSet.SeriesDate,
-    SliceThickness:
-      Number(dataSet.SharedFunctionalGroupsSequence.PixelMeasuresSequence
-        .SliceThickness),
     StudyInstanceUID: dataSet.StudyInstanceUID,
     instances: [
       {
@@ -246,11 +243,13 @@ const storeDicomSeg = async (naturalizedReport, headers) => {
   const params = new URLSearchParams(window.location.search);
   const bucket = params.get('bucket') || 'gradient-health-search-viewer-links';
   const prefix = params.get('bucket-prefix') || 'dicomweb';
+  const segBucket = params.get('seg-bucket') || bucket
+  const segPrefix = params.get('seg-prefix') || prefix
 
-  const fileName = `${prefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/intances/${SOPInstanceUID}/${encodeURIComponent(
+  const fileName = `${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/instances/${SOPInstanceUID}/${encodeURIComponent(
     SeriesDescription
   )}.dcm`;
-  const segUploadUri = `https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${fileName}`;
+  const segUploadUri = `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${fileName}`;
   const blob = datasetToBlob(naturalizedReport);
 
   await fetch(segUploadUri, {
@@ -265,18 +264,18 @@ const storeDicomSeg = async (naturalizedReport, headers) => {
     .then((data) => {
       if (data.error) {
         throw new Error(
-          `${data.error.code}: ${data.error.message}` || 'Failed to store DicomSeg file'
+          `${data.error.code}: ${data.error.message}`
         );
       }
 
-      const segUri = `dicomweb:https://storage.googleapis.com/${bucket}/${data.name}`;
+      const segUri = `dicomweb:https://storage.googleapis.com/${segBucket}/${data.name}`;
       // We are storing the imageId so that when naturalizedReport is made to displayset we can get url to DicomSeg file.
       naturalizedReport.url = segUri
       const segSeries = mapSegSeriesFromDataSet(naturalizedReport);
       const compressedFile = pako.gzip(JSON.stringify(segSeries));
 
       return fetch(
-        `https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${prefix}/${StudyInstanceUID}/${SeriesInstanceUID}/metadata.json.gz&contentEncoding=gzip`,
+        `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${segPrefix}/${StudyInstanceUID}/${SeriesInstanceUID}/metadata.json.gz&contentEncoding=gzip`,
         {
           method: 'POST',
           headers: {
@@ -290,10 +289,16 @@ const storeDicomSeg = async (naturalizedReport, headers) => {
         .then((data) => {
           if (data.error) {
             throw new Error(
-              `${data.error.code}: ${data.error.message}` || 'Failed to store DicomSeg metadata'
+              `${data.error.code}: ${data.error.message}`
             );
           }
         })
+        .catch((error) => {
+          throw new Error(error.message || 'Failed to store DicomSeg metadata')
+        })
+    })
+    .catch((error) => {
+      throw new Error(error.message || 'Failed to store DicomSeg file')
     })
 };
 
