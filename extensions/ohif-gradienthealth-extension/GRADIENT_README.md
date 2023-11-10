@@ -64,5 +64,5 @@
 }
 ```
 
-Segmentation Series metedata is also retrieved along with other series metadata
-and loaded as Segmentation
+Segmentation Series metadata is also retrieved along with other series metadata of the study
+and loaded as Dicom-Seg in the ThumbnailList.
