@@ -10,8 +10,8 @@ function _getStudyForPatientUtility(extensionManager) {
     '@ohif/extension-default.utilityModule.common'
   );
 
-  const { getStudiesForPatientByStudyInstanceUID } = utilityModule.exports;
-  return getStudiesForPatientByStudyInstanceUID;
+  const { getStudiesForPatientByMRN } = utilityModule.exports;
+  return getStudiesForPatientByMRN;
 }
 
 /**
@@ -28,10 +28,10 @@ function WrappedPanelStudyBrowserTracking({
 }) {
   const dataSource = extensionManager.getActiveDataSource()[0];
 
-  const getStudiesForPatientByStudyInstanceUID = _getStudyForPatientUtility(
+  const getStudiesForPatientByMRN = _getStudyForPatientUtility(
     extensionManager
   );
-  const _getStudiesForPatientByStudyInstanceUID = getStudiesForPatientByStudyInstanceUID.bind(
+  const _getStudiesForPatientByMRN = getStudiesForPatientByMRN.bind(
     null,
     dataSource
   );
@@ -51,8 +51,8 @@ function WrappedPanelStudyBrowserTracking({
       UINotificationService={servicesManager.services.UINotificationService}
       dataSource={dataSource}
       getImageSrc={_getImageSrcFromImageId}
-      getStudiesForPatientByStudyInstanceUID={
-        _getStudiesForPatientByStudyInstanceUID
+      getStudiesForPatientByMRN={
+        _getStudiesForPatientByMRN
       }
       requestDisplaySetCreationForStudy={_requestDisplaySetCreationForStudy}
     />

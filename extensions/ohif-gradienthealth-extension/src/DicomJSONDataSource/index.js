@@ -1,3 +1,5 @@
+import dcmjs from 'dcmjs';
+import pako from 'pako'
 import {
   DicomMetadataStore,
   IWebApiDataSource,
@@ -10,6 +12,7 @@ import getImageId from '../DicomWebDataSource/utils/getImageId';
 import _ from 'lodash';
 
 const metadataProvider = classes.MetadataProvider;
+const { datasetToBlob } = dcmjs.data;
 
 const mappings = {
   studyInstanceUid: 'StudyInstanceUID',
@@ -206,6 +209,99 @@ const findStudies = (key, value) => {
   return studies;
 };
 
+const mapSegSeriesFromDataSet = (dataSet) => {
+  return {
+    Modality: dataSet.Modality,
+    SeriesInstanceUID: dataSet.SeriesInstanceUID,
+    SeriesDescription: dataSet.SeriesDescription,
+    SeriesNumber: Number(dataSet.SeriesNumber),
+    SeriesDate: dataSet.SeriesDate,
+    StudyInstanceUID: dataSet.StudyInstanceUID,
+    instances: [
+      {
+        metadata: {
+          FrameOfReferenceUID: dataSet.FrameOfReferenceUID,
+          SOPInstanceUID: dataSet.SOPInstanceUID,
+          SOPClassUID: dataSet.SOPClassUID,
+          ReferencedSeriesSequence: dataSet.ReferencedSeriesSequence,
+          SharedFunctionalGroupsSequence: dataSet.SharedFunctionalGroupsSequence,
+        },
+        url: dataSet.url,
+      }
+    ],
+  };
+};
+
+const storeDicomSeg = async (naturalizedReport, headers) => {
+  const {
+    StudyInstanceUID,
+    SeriesInstanceUID,
+    SOPInstanceUID,
+    SeriesDescription,
+  } = naturalizedReport;
+
+  const params = new URLSearchParams(window.location.search);
+  const bucket = params.get('bucket') || 'gradient-health-search-viewer-links';
+  const prefix = params.get('bucket-prefix') || 'dicomweb';
+  const segBucket = params.get('seg-bucket') || bucket
+  const segPrefix = params.get('seg-prefix') || prefix
+
+  const fileName = `${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/instances/${SOPInstanceUID}/${encodeURIComponent(
+    SeriesDescription
+  )}.dcm`;
+  const segUploadUri = `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${fileName}`;
+  const blob = datasetToBlob(naturalizedReport);
+
+  await fetch(segUploadUri, {
+    method: 'POST',
+    headers: {
+      ...headers,
+      'Content-Type': 'application/dicom',
+    },
+    body: blob,
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.error) {
+        throw new Error(
+          `${data.error.code}: ${data.error.message}`
+        );
+      }
+
+      const segUri = `dicomweb:https://storage.googleapis.com/${segBucket}/${data.name}`;
+      // We are storing the imageId so that when naturalizedReport is made to displayset we can get url to DicomSeg file.
+      naturalizedReport.url = segUri
+      const segSeries = mapSegSeriesFromDataSet(naturalizedReport);
+      const compressedFile = pako.gzip(JSON.stringify(segSeries));
+
+      return fetch(
+        `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${segPrefix}/${StudyInstanceUID}/${SeriesInstanceUID}/metadata.json.gz&contentEncoding=gzip`,
+        {
+          method: 'POST',
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json',
+          },
+          body: compressedFile,
+        }
+      )
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.error) {
+            throw new Error(
+              `${data.error.code}: ${data.error.message}`
+            );
+          }
+        })
+        .catch((error) => {
+          throw new Error(error.message || 'Failed to store DicomSeg metadata')
+        })
+    })
+    .catch((error) => {
+      throw new Error(error.message || 'Failed to store DicomSeg file')
+    })
+};
+
 let _dicomJsonConfig = null;
 
 function createDicomJSONApi(dicomJsonConfig, servicesManager) {
@@ -394,8 +490,17 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
       },
     },
     store: {
-      dicom: () => {
-        console.debug(' DICOMJson store dicom');
+      dicom: async (dataset) => {
+        if (dataset.Modality === 'SEG') {
+          const headers = servicesManager.services.UserAuthenticationService.getAuthorizationHeader()
+          try {
+            await storeDicomSeg(dataset, headers)
+          } catch (error) {
+            throw error
+          }
+        } else {
+          console.debug(' DICOMJson store dicom');
+        }
       },
     },
     getImageIdsForDisplaySet(displaySet) {
