@@ -7,6 +7,7 @@ import {
   useViewportGrid,
   Dialog,
 } from '@ohif/ui';
+import { useNavigate } from 'react-router-dom';
 
 const { formatDate } = utils;
 
@@ -20,7 +21,7 @@ function PanelStudyBrowserTracking({
   UIDialogService,
   UINotificationService,
   getImageSrc,
-  getStudiesForPatientByStudyInstanceUID,
+  getStudiesForPatientByMRN,
   requestDisplaySetCreationForStudy,
   dataSource,
 }) {
@@ -32,6 +33,7 @@ function PanelStudyBrowserTracking({
     { activeViewportId, viewports, numCols, numRows },
     viewportGridService,
   ] = useViewportGrid();
+  const navigate=useNavigate()
 
   const [activeTabName, setActiveTabName] = useState('primary');
   const [expandedStudyInstanceUIDs, setExpandedStudyInstanceUIDs] = useState([
@@ -50,7 +52,7 @@ function PanelStudyBrowserTracking({
   };
 
   const activeViewportDisplaySetInstanceUIDs =
-    viewports[activeViewportId]?.displaySetInstanceUIDs;
+    viewports.get(activeViewportId)?.displaySetInstanceUIDs;
 
   const isSingleViewport = numCols === 1 && numRows === 1;
 
@@ -81,9 +83,26 @@ function PanelStudyBrowserTracking({
   useEffect(() => {
     // Fetch all studies for the patient in each primary study
     async function fetchStudiesForPatient(StudyInstanceUID) {
-      const qidoStudiesForPatient =
-        (await getStudiesForPatientByStudyInstanceUID(StudyInstanceUID)) || [];
-      // TODO: This should be "naturalized DICOM JSON" studies
+      // current study qido
+      const qidoForStudyUID = await dataSource.query.studies.search({
+        studyInstanceUid: StudyInstanceUID,
+      });
+
+      if (!qidoForStudyUID?.length) {
+        navigate('/notfoundstudy', '_self');
+        throw new Error('Invalid study URL');
+      }
+
+      let qidoStudiesForPatient = qidoForStudyUID;
+
+      // try to fetch the prior studies based on the patientID if the
+      // server can respond.
+      try {
+        qidoStudiesForPatient = await getStudiesForPatientByMRN(qidoForStudyUID);
+      } catch (error) {
+        console.warn(error);
+      }
+
       const mappedStudies = _mapDataSourceStudies(qidoStudiesForPatient);
       const actuallyMappedStudies = mappedStudies.map(qidoStudy => {
         return {
@@ -92,16 +111,22 @@ function PanelStudyBrowserTracking({
           description: qidoStudy.StudyDescription,
           modalities: qidoStudy.ModalitiesInStudy,
           numInstances: qidoStudy.NumInstances,
-          // displaySets: []
         };
       });
 
-      setStudyDisplayList(actuallyMappedStudies);
+      setStudyDisplayList(prevArray => {
+        const ret = [...prevArray];
+        for (const study of actuallyMappedStudies) {
+          if (!prevArray.find(it => it.studyInstanceUid === study.studyInstanceUid)) {
+            ret.push(study);
+          }
+        }
+        return ret;
+      });
     }
 
     StudyInstanceUIDs.forEach(sid => fetchStudiesForPatient(sid));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [StudyInstanceUIDs, getStudiesForPatientByStudyInstanceUID]);
+  }, [StudyInstanceUIDs, dataSource, getStudiesForPatientByMRN, navigate]);
 
   // ~~ Initial Thumbnails
   useEffect(() => {
@@ -328,7 +353,7 @@ PanelStudyBrowserTracking.propTypes = {
     getImageIdsForDisplaySet: PropTypes.func.isRequired,
   }).isRequired,
   getImageSrc: PropTypes.func.isRequired,
-  getStudiesForPatientByStudyInstanceUID: PropTypes.func.isRequired,
+  getStudiesForPatientByMRN: PropTypes.func.isRequired,
   requestDisplaySetCreationForStudy: PropTypes.func.isRequired,
 };
 
@@ -373,7 +398,7 @@ function _mapDisplaySets(
     const componentType = _getComponentType(ds.Modality);
     const viewportIdentificator = isSingleViewport
       ? []
-      : viewports.reduce((acc, viewportData, index) => {
+      : Object.values(viewports).reduce((acc, viewportData, index) => {
           if (
             viewportData?.displaySetInstanceUIDs?.includes(
               ds.displaySetInstanceUID
