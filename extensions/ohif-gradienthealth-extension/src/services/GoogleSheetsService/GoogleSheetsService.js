@@ -57,7 +57,7 @@ export default class GoogleSheetsService {
       const url = row[urlIndex];
       const params = new URLSearchParams('?' + url.split('?')[1]);
       const StudyInstanceUID = params.get('StudyInstanceUIDs');
-      CacheAPIService.cacheStudy(StudyInstanceUID);
+      CacheAPIService.cacheStudy(StudyInstanceUID, params.getAll('bucket'));
     });
   }
 
@@ -254,12 +254,16 @@ export default class GoogleSheetsService {
       const url = rowValues[index];
       const params = new URLSearchParams('?' + url.split('?')[1]);
       const StudyInstanceUID = params.get('StudyInstanceUIDs');
+      const buckets = params.getAll('bucket');
       if (!StudyInstanceUID) {
         window.location.href = `https://docs.google.com/spreadsheets/d/${this.sheetId}`;
       }
       const dataSource = this.extensionManager.getActiveDataSource()[0];
-      await dataSource.retrieve.series.metadata({ StudyInstanceUID });
+      await dataSource.retrieve.series.metadata({ StudyInstanceUID, buckets });
       const studies = [DicomMetadataStore.getStudy(StudyInstanceUID)];
+      const activeProtocolId =
+        HangingProtocolService.getActiveProtocol().protocol.id;
+      HangingProtocolService.reset()
       HangingProtocolService.run(
         {
           studies,
@@ -270,11 +274,17 @@ export default class GoogleSheetsService {
             }
           ),
         },
-        'breast'
+        activeProtocolId
       );
 
       const nextParams = new URLSearchParams(window.location.search);
       nextParams.set('StudyInstanceUIDs', StudyInstanceUID);
+      if (buckets.length) {
+        nextParams.delete('bucket');
+        buckets.forEach((bucket) => {
+          nextParams.append('bucket', bucket);
+        });
+      }
       const nextURL =
         window.location.href.split('?')[0] + '?' + nextParams.toString();
       window.history.replaceState({}, null, nextURL);

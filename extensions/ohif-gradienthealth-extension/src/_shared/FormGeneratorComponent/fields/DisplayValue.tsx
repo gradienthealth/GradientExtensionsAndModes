@@ -8,7 +8,7 @@ export default function DisplayValue({formIndex, name, value, defaultValue, opti
         <Typography sx={{ fontSize: 14, marginRight: 1 }} color="text.secondary" gutterBottom>
           { name }:
         </Typography>
-        <Typography variant="body2">
+        <Typography variant="body2" className="overflow-auto invisible-scrollbar">
           { value !== null ? value.toString() : defaultValue !== null ? defaultValue.toString() : '' } 
         </Typography>
     </Paper>

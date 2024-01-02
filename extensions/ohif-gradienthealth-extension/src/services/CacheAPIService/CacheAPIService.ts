@@ -119,12 +119,23 @@ export default class CacheAPIService {
     });
   }
 
-  public async cacheStudy(StudyInstanceUID) {
-    await this.dataSource.retrieve.series.metadata({ StudyInstanceUID });
+  public async cacheStudy(StudyInstanceUID, buckets = undefined) {
+    const { sopClassUids: segSOPClassUIDs } =
+      this.extensionManager.getModuleEntry(
+        '@ohif/extension-cornerstone-dicom-seg.sopClassHandlerModule.dicom-seg'
+      );
+    await this.dataSource.retrieve.series.metadata({
+      StudyInstanceUID,
+      buckets,
+    });
     const study = DicomMetadataStore.getStudy(StudyInstanceUID);
-    const imageIds = study.series.flatMap((serie) =>
-      serie.instances.flatMap((instance) => instance.imageId)
-    );
+    const imageIds = study.series
+      .filter(
+        (serie) => !segSOPClassUIDs.includes(serie.instances[0].SOPClassUID)
+      )
+      .flatMap((serie) =>
+        serie.instances.flatMap((instance) => instance.imageId)
+      );
     this.cacheImageIds(imageIds);
   }
 
