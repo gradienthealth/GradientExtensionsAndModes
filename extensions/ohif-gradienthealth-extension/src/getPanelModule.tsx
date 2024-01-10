@@ -2,7 +2,8 @@ import {
   PanelMeasurementTableTracking,
   PanelStudyBrowserTracking,
   PanelForm,
-  PanelFormAndMeasurementTable
+  PanelFormAndMeasurementTable,
+  PanelStudyBrowser,
 } from './panels';
 
 // TODO:
@@ -54,6 +55,17 @@ function getPanelModule({
       iconLabel: 'Form',
       label: 'Form',
       component: PanelFormAndMeasurementTable.bind(null, {
+        commandsManager,
+        extensionManager,
+        servicesManager,
+      }),
+    },
+    {
+      name: 'seriesList-without-tracking',
+      iconName: 'group-layers',
+      iconLabel: 'Studies',
+      label: 'Studies',
+      component: PanelStudyBrowser.bind(null, {
         commandsManager,
         extensionManager,
         servicesManager,

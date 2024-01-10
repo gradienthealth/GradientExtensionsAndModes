@@ -1,5 +1,5 @@
 import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
-import { internal } from '@cornerstonejs/dicom-image-loader';
+import { internal, wadouri } from '@cornerstonejs/dicom-image-loader';
 const { getOptions } = internal;
 import _ from 'lodash';
 import {
@@ -10,26 +10,32 @@ import {
   imageLoadPoolManager,
 } from '@cornerstonejs/core';
 
-const LOCAL_EVENTS = {};
+const LOCAL_EVENTS = {
+  IMAGE_CACHE_PREFETCHED: 'event::gradienthealth::image_cache_prefetched',
+};
 
 export default class CacheAPIService {
   listeners: { [key: string]: Function[] };
   EVENTS: { [key: string]: string };
   element: HTMLElement;
+  private servicesManager;
   private commandsManager;
   private extensionManager;
   private dataSource;
   private options;
   public storageUsage;
   public storageQuota;
+  private imageIdToFileUriMap;
 
   constructor(servicesManager, commandsManager, extensionManager) {
     this.listeners = {};
     this.EVENTS = LOCAL_EVENTS;
     this.commandsManager = commandsManager;
     this.extensionManager = extensionManager;
+    this.servicesManager = servicesManager;
     this.storageUsage = null;
     this.storageQuota = null;
+    this.imageIdToFileUriMap = new Map();
     Object.assign(this, pubSubServiceInterface);
   }
 
@@ -120,10 +126,7 @@ export default class CacheAPIService {
   }
 
   public async cacheStudy(StudyInstanceUID, buckets = undefined) {
-    const { sopClassUids: segSOPClassUIDs } =
-      this.extensionManager.getModuleEntry(
-        '@ohif/extension-cornerstone-dicom-seg.sopClassHandlerModule.dicom-seg'
-      );
+    const segSOPClassUIDs = ['1.2.840.10008.5.1.4.1.1.66.4'];
     await this.dataSource.retrieve.series.metadata({
       StudyInstanceUID,
       buckets,
@@ -137,6 +140,7 @@ export default class CacheAPIService {
         serie.instances.flatMap((instance) => instance.imageId)
       );
     this.cacheImageIds(imageIds);
+    this.cacheSegFiles(StudyInstanceUID);
   }
 
   public async cacheSeries(StudyInstanceUID, SeriesInstanceUID) {
@@ -153,7 +157,9 @@ export default class CacheAPIService {
   public cacheImageIds(imageIds) {
     function sendRequest(imageId, options) {
       return imageLoader.loadAndCacheImage(imageId, options).then(
-        () => {},
+        (imageLoadObject) => {
+          this._broadcastEvent(this.EVENTS.IMAGE_CACHE_PREFETCHED, { imageLoadObject });
+        },
         (error) => {
           console.error(error);
         }
@@ -177,6 +183,40 @@ export default class CacheAPIService {
         additionalDetails,
         priority
       );
+    });
+  }
+
+  public cacheSegFiles(studyInstanceUID) {
+    const segSOPClassUIDs = ['1.2.840.10008.5.1.4.1.1.66.4'];
+    const { displaySetService, userAuthenticationService } =
+      this.servicesManager.services;
+
+    const study = DicomMetadataStore.getStudy(studyInstanceUID);
+    const headers = userAuthenticationService.getAuthorizationHeader();
+    study.series.forEach((serie) => {
+      const { SOPClassUID, SeriesInstanceUID, url } = serie.instances[0];
+      if (segSOPClassUIDs.includes(SOPClassUID)) {
+        const { scheme, url: parsedUrl } = wadouri.parseImageId(url);
+        if (scheme === 'dicomzip') {
+          return wadouri.loadZipRequest(parsedUrl, url);
+        }
+
+        const displaySet =
+          displaySetService.getDisplaySetsForSeries(SeriesInstanceUID)[0];
+
+        if (this.imageIdToFileUriMap.get(url) === displaySet.instance.imageId) {
+          return;
+        }
+
+        fetch(parsedUrl, { headers })
+          .then((response) => response.arrayBuffer())
+          .then((buffer) => wadouri.fileManager.add(new Blob([buffer])))
+          .then((fileUri) => {
+            this.imageIdToFileUriMap.set(url, fileUri);
+            displaySet.instance.imageId = fileUri;
+            displaySet.instance.getImageId = () => fileUri;
+          });
+      }
     });
   }
 

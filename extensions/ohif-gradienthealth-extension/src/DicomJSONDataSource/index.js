@@ -440,7 +440,7 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
       series: {
         metadata: async ({
           StudyInstanceUID,
-          buckets,
+          buckets = [],
           madeInClient = false,
           customSort,
         } = {}) => {
@@ -452,7 +452,9 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
 
           let study = findStudies('StudyInstanceUID', StudyInstanceUID)[0];
 
-          if (!study && buckets) {
+          if (!study) {
+            // If the study is not found, initialize the study.
+            // If there is no buckets in the url default bucket will be used.
             const params = new URLSearchParams(window.location.search);
             params.set('StudyInstanceUIDs', StudyInstanceUID);
             params.delete('bucket');

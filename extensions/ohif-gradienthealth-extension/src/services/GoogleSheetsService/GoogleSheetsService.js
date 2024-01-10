@@ -1,3 +1,4 @@
+import { eventTarget, Enums, cache } from '@cornerstonejs/core';
 import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
 import { alphabet } from './utils';
 
@@ -53,7 +54,7 @@ export default class GoogleSheetsService {
     const min = index - bufferBack < 2 ? 2 : index - bufferBack;
     const max = index + bufferFront;
     const urlIndex = this.formHeader.findIndex((name) => name == 'URL');
-    this.rows.slice(min, max).forEach((row) => {
+    this.rows.slice(min - 1, max).forEach((row) => {
       const url = row[urlIndex];
       const params = new URLSearchParams('?' + url.split('?')[1]);
       const StudyInstanceUID = params.get('StudyInstanceUIDs');
@@ -65,6 +66,7 @@ export default class GoogleSheetsService {
     const index = this.studyUIDToIndex[id];
     this.setFormByIndex(index);
     this.cacheNearbyStudyInstanceUIDs(id, 2, 32);
+    loadSegFiles(id, this.serviceManager);
   }
 
   setFormByIndex(index) {
@@ -244,8 +246,12 @@ export default class GoogleSheetsService {
 
   async getRow(delta) {
     try {
-      const { DisplaySetService, HangingProtocolService, CacheAPIService } =
-        this.serviceManager.services;
+      const {
+        DisplaySetService,
+        HangingProtocolService,
+        CacheAPIService,
+        SegmentationService,
+      } = this.serviceManager.services;
       const rowValues = this.rows[this.index + delta - 1];
       if (!rowValues) {
         window.location.href = `https://docs.google.com/spreadsheets/d/${this.sheetId}`;
@@ -263,7 +269,7 @@ export default class GoogleSheetsService {
       const studies = [DicomMetadataStore.getStudy(StudyInstanceUID)];
       const activeProtocolId =
         HangingProtocolService.getActiveProtocol().protocol.id;
-      HangingProtocolService.reset()
+      HangingProtocolService.reset();
       HangingProtocolService.run(
         {
           studies,
@@ -276,15 +282,18 @@ export default class GoogleSheetsService {
         },
         activeProtocolId
       );
+      const segmentations = SegmentationService.getSegmentations();
+      segmentations.forEach((segmentation) =>
+        SegmentationService.remove(segmentation.id)
+      );
 
       const nextParams = new URLSearchParams(window.location.search);
       nextParams.set('StudyInstanceUIDs', StudyInstanceUID);
-      if (buckets.length) {
-        nextParams.delete('bucket');
-        buckets.forEach((bucket) => {
-          nextParams.append('bucket', bucket);
-        });
-      }
+      nextParams.delete('bucket');
+      buckets.forEach((bucket) => {
+        nextParams.append('bucket', bucket);
+      });
+      
       const nextURL =
         window.location.href.split('?')[0] + '?' + nextParams.toString();
       window.history.replaceState({}, null, nextURL);
@@ -303,4 +312,71 @@ export default class GoogleSheetsService {
     this.formValue = null;
     this._broadcastEvent(EVENTS.GOOGLE_SHEETS_ERROR);
   }
+}
+
+function loadSegFiles(studyInstanceUID, serviceManager) {
+  const segSOPClassUIDs = ['1.2.840.10008.5.1.4.1.1.66.4'];
+  const {
+    segmentationService,
+    displaySetService,
+    UserAuthenticationService,
+    CacheAPIService,
+  } = serviceManager.services;
+  const headers = UserAuthenticationService.getAuthorizationHeader();
+
+  const activeStudySegDisplaySets = displaySetService.getDisplaySetsBy(
+    (ds) =>
+      ds.StudyInstanceUID === studyInstanceUID &&
+      segSOPClassUIDs.includes(ds.SOPClassUID)
+  );
+  const nonSegImageIds = displaySetService
+    .getDisplaySetsBy(
+      (ds) =>
+        ds.StudyInstanceUID === studyInstanceUID &&
+        !segSOPClassUIDs.includes(ds.SOPClassUID)
+    )
+    .flatMap((ds) => ds.images.flatMap((image) => image.imageId));
+
+  const isAllSeriesOfStudyCached = () => {
+    return nonSegImageIds.every((imageId) => cache.getImageLoadObject(imageId));
+  };
+
+  const newStackCreateListeners = () => {
+    let unsubscribe;
+
+    const loadSegmentations = () => {
+      if (isAllSeriesOfStudyCached()) {
+        activeStudySegDisplaySets.forEach(async (displaySet) => {
+          displaySet.getReferenceDisplaySet();
+          await displaySet.load({ headers });
+          segmentationService.addSegmentationRepresentationToToolGroup(
+            'default',
+            displaySet.displaySetInstanceUID,
+            true
+          );
+        });
+
+        unsubscribe?.();
+      }
+    };
+
+    if (isAllSeriesOfStudyCached()) {
+      loadSegmentations();
+    } else {
+      ({ unsubscribe } = CacheAPIService.subscribe(
+        CacheAPIService.EVENTS.IMAGE_CACHE_PREFETCHED,
+        loadSegmentations
+      ));
+    }
+
+    eventTarget.removeEventListener(
+      Enums.Events.STACK_VIEWPORT_NEW_STACK,
+      newStackCreateListeners
+    );
+  };
+
+  eventTarget.addEventListener(
+    Enums.Events.STACK_VIEWPORT_NEW_STACK,
+    newStackCreateListeners
+  );
 }
