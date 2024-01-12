@@ -57,7 +57,7 @@ export default class GoogleSheetsService {
     this.rows.slice(min - 1, max).forEach((row) => {
       const url = row[urlIndex];
       const params = new URLSearchParams('?' + url.split('?')[1]);
-      const StudyInstanceUID = params.get('StudyInstanceUIDs');
+      const StudyInstanceUID = getStudyInstanceUIDFromParams(params);
       CacheAPIService.cacheStudy(StudyInstanceUID, params.getAll('bucket'));
     });
   }
@@ -103,14 +103,14 @@ export default class GoogleSheetsService {
       this.studyUIDToIndex = this.rows.slice(1).reduce((prev, curr, idx) => {
         const url = curr[urlIndex];
         const params = new URLSearchParams('?' + url.split('?')[1]);
-        const StudyInstanceUID = params.get('StudyInstanceUIDs');
+        const StudyInstanceUID = getStudyInstanceUIDFromParams(params);
 
         // Google Sheets is 1-indexed and we ignore first row as header row thus + 2
         prev[StudyInstanceUID] = idx + 2;
         return prev;
       }, {});
 
-      this.index = this.studyUIDToIndex[params.get('StudyInstanceUIDs')];
+      this.index = this.studyUIDToIndex[getStudyInstanceUIDFromParams(params)];
 
       // Map formTemplate and formValue
       const values = this.settings.values[0].map((_, colIndex) =>
@@ -145,7 +145,7 @@ export default class GoogleSheetsService {
         })
         .sort((a, b) => a.order - b.order);
 
-      this.setFormByStudyInstanceUID(params.get('StudyInstanceUIDs'));
+      this.setFormByStudyInstanceUID(getStudyInstanceUIDFromParams(params));
     } catch (e) {
       console.error(e);
       this._broadcastEvent(EVENTS.GOOGLE_SHEETS_ERROR);
@@ -259,7 +259,7 @@ export default class GoogleSheetsService {
       const index = this.formHeader.findIndex((name) => name == 'URL');
       const url = rowValues[index];
       const params = new URLSearchParams('?' + url.split('?')[1]);
-      const StudyInstanceUID = params.get('StudyInstanceUIDs');
+      const StudyInstanceUID = getStudyInstanceUIDFromParams(params);
       const buckets = params.getAll('bucket');
       if (!StudyInstanceUID) {
         window.location.href = `https://docs.google.com/spreadsheets/d/${this.sheetId}`;
@@ -288,12 +288,16 @@ export default class GoogleSheetsService {
       );
 
       const nextParams = new URLSearchParams(window.location.search);
-      nextParams.set('StudyInstanceUIDs', StudyInstanceUID);
+      if (nextParams.get('StudyInstanceUIDs'))
+        nextParams.set('StudyInstanceUIDs', StudyInstanceUID);
+      else {
+        nextParams.set('StudyInstanceUID', StudyInstanceUID);
+      }
       nextParams.delete('bucket');
       buckets.forEach((bucket) => {
         nextParams.append('bucket', bucket);
       });
-      
+
       const nextURL =
         window.location.href.split('?')[0] + '?' + nextParams.toString();
       window.history.replaceState({}, null, nextURL);
@@ -315,6 +319,12 @@ export default class GoogleSheetsService {
 }
 
 function loadSegFiles(studyInstanceUID, serviceManager) {
+  if (!window.location.pathname.startsWith('/segmentation')) {
+    // Since sheet panel only used by segmentation and breast density mode,
+    // and breast density mode does not handles segmentation we are not loading segmentations.
+    return;
+  }
+
   const segSOPClassUIDs = ['1.2.840.10008.5.1.4.1.1.66.4'];
   const {
     segmentationService,
@@ -379,4 +389,9 @@ function loadSegFiles(studyInstanceUID, serviceManager) {
     Enums.Events.STACK_VIEWPORT_NEW_STACK,
     newStackCreateListeners
   );
+}
+
+function getStudyInstanceUIDFromParams(params) {
+  // Breast OHIF dicomweb datasource uses StudyInstanceUIDs, but bq datasource uses StudyInstanceUID
+  return params.get('StudyInstanceUIDs') || params.get('StudyInstanceUID');
 }

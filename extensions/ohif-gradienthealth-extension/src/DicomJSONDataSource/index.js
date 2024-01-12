@@ -348,7 +348,7 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
         const metadataPerBucket = await filesFromStudyInstanceUID({
           bucketName: buckets[i],
           prefix: query.get('bucket-prefix') || 'dicomweb',
-          studyuids: query.getAll('StudyInstanceUIDs'),
+          studyuids: query.getAll('StudyInstanceUID'),
           headers: UserAuthenticationService.getAuthorizationHeader(),
         });
 
@@ -456,7 +456,7 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
             // If the study is not found, initialize the study.
             // If there is no buckets in the url default bucket will be used.
             const params = new URLSearchParams(window.location.search);
-            params.set('StudyInstanceUIDs', StudyInstanceUID);
+            params.set('StudyInstanceUID', StudyInstanceUID);
             params.delete('bucket');
             buckets.forEach((bucket) => {
               params.append('bucket', bucket);
