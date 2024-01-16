@@ -354,17 +354,25 @@ function loadSegFiles(studyInstanceUID, serviceManager) {
   const newStackCreateListeners = () => {
     let unsubscribe;
 
-    const loadSegmentations = () => {
+    const loadSegmentations = async () => {
       if (isAllSeriesOfStudyCached()) {
-        activeStudySegDisplaySets.forEach(async (displaySet) => {
-          displaySet.getReferenceDisplaySet();
-          await displaySet.load({ headers });
-          segmentationService.addSegmentationRepresentationToToolGroup(
-            'default',
-            displaySet.displaySetInstanceUID,
-            true
-          );
-        });
+        const loadPromises = activeStudySegDisplaySets.map(
+          async (displaySet) => {
+            displaySet.getReferenceDisplaySet();
+            return displaySet.load({ headers });
+          }
+        );
+
+        await Promise.all(loadPromises);
+
+        activeStudySegDisplaySets.forEach(
+          async (displaySet) =>
+            await segmentationService.addSegmentationRepresentationToToolGroup(
+              'default',
+              displaySet.displaySetInstanceUID,
+              true
+            )
+        );
 
         unsubscribe?.();
       }
