@@ -220,6 +220,19 @@ export default class CacheAPIService {
     });
   }
 
+  public updateCachedFile(blob, displaySet) {
+    const { url, imageId } = displaySet.instances[0];
+    const fileUri = wadouri.fileManager.add(blob);
+    displaySet.instance.imageId = fileUri;
+    displaySet.instance.getImageId = () => fileUri;
+    this.imageIdToFileUriMap.set(url, fileUri);
+
+    if (imageId.startsWith('dicomfile:')) {
+      const { url: index } = wadouri.parseImageId(imageId);
+      wadouri.fileManager.remove(index);
+    }
+  }
+
   public async cacheMissingStudyImageIds(StudyInstanceUIDs) {
     const existingKeys = await window.caches.keys();
     const existingStudyInstanceUIDs = existingKeys.map(

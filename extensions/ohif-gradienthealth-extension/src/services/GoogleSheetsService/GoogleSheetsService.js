@@ -331,6 +331,8 @@ function loadSegFiles(studyInstanceUID, serviceManager) {
     displaySetService,
     UserAuthenticationService,
     CacheAPIService,
+    cornerstoneViewportService,
+    viewportGridService,
   } = serviceManager.services;
   const headers = UserAuthenticationService.getAuthorizationHeader();
 
@@ -392,6 +394,14 @@ function loadSegFiles(studyInstanceUID, serviceManager) {
       newStackCreateListeners
     );
   };
+
+  const { activeViewportId } = viewportGridService.getState();
+  const viewport =
+    cornerstoneViewportService.getCornerstoneViewport(activeViewportId);
+  if (viewport.viewportStatus === Enums.ViewportStatus.RENDERED) {
+    newStackCreateListeners();
+    return;
+  }
 
   eventTarget.addEventListener(
     Enums.Events.STACK_VIEWPORT_NEW_STACK,
