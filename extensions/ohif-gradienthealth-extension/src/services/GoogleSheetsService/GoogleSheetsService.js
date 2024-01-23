@@ -1,4 +1,5 @@
 import { eventTarget, Enums, cache } from '@cornerstonejs/core';
+import { utilities as csToolsUtils } from '@cornerstonejs/tools';
 import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
 import { alphabet } from './utils';
 
@@ -66,7 +67,6 @@ export default class GoogleSheetsService {
     const index = this.studyUIDToIndex[id];
     this.setFormByIndex(index);
     this.cacheNearbyStudyInstanceUIDs(id, 2, 32);
-    loadSegFiles(id, this.serviceManager);
   }
 
   setFormByIndex(index) {
@@ -81,6 +81,16 @@ export default class GoogleSheetsService {
       const { UserAuthenticationService } = this.serviceManager.services;
       this.user = UserAuthenticationService.getUser();
       const params = new URLSearchParams(window.location.search);
+
+      if (window.location.pathname.startsWith('/segmentation')) {
+        // Since sheet panel only used by segmentation and breast density mode,
+        // and breast density mode does not handles segmentation we are only loading
+        // segmentations in segmentation mode.
+        eventTarget.addEventListener(
+          Enums.Events.STACK_VIEWPORT_NEW_STACK,
+          (evt) => loadSegFiles(evt, this.serviceManager)
+        );
+      }
 
       if (!params.get('sheetId'))
         return this._broadcastEvent(EVENTS.GOOGLE_SHEETS_ERROR);
@@ -318,12 +328,10 @@ export default class GoogleSheetsService {
   }
 }
 
-function loadSegFiles(studyInstanceUID, serviceManager) {
-  if (!window.location.pathname.startsWith('/segmentation')) {
-    // Since sheet panel only used by segmentation and breast density mode,
-    // and breast density mode does not handles segmentation we are not loading segmentations.
-    return;
-  }
+function loadSegFiles(evt, serviceManager) {
+  const { imageIds } = evt.detail;
+  const params = new URLSearchParams(window.location.search);
+  const studyInstanceUID = getStudyInstanceUIDFromParams(params);
 
   const segSOPClassUIDs = ['1.2.840.10008.5.1.4.1.1.66.4'];
   const {
@@ -331,8 +339,6 @@ function loadSegFiles(studyInstanceUID, serviceManager) {
     displaySetService,
     UserAuthenticationService,
     CacheAPIService,
-    cornerstoneViewportService,
-    viewportGridService,
   } = serviceManager.services;
   const headers = UserAuthenticationService.getAuthorizationHeader();
 
@@ -349,64 +355,89 @@ function loadSegFiles(studyInstanceUID, serviceManager) {
     )
     .flatMap((ds) => ds.images.flatMap((image) => image.imageId));
 
+  const isAllSegmentationsLoaded = isAllSegmentationsOfSeriesLoaded(
+    imageIds,
+    activeStudySegDisplaySets,
+    serviceManager
+  );
+
+  if (isAllSegmentationsLoaded) {
+    const renderedToolGroupIds = [];
+
+    activeStudySegDisplaySets.forEach((ds) => {
+      const toolGroupIds = segmentationService.getToolGroupIdsWithSegmentation(
+        ds.displaySetInstanceUID
+      );
+      toolGroupIds.forEach((toolGroupId) => {
+        if (renderedToolGroupIds.includes(toolGroupId)) {
+          return;
+        }
+
+        csToolsUtils.segmentation.triggerSegmentationRender(toolGroupId);
+        renderedToolGroupIds.push(toolGroupId);
+      });
+    });
+
+    return;
+  }
+
   const isAllSeriesOfStudyCached = () => {
     return nonSegImageIds.every((imageId) => cache.getImageLoadObject(imageId));
   };
 
-  const newStackCreateListeners = () => {
-    let unsubscribe;
+  let unsubscribe;
 
-    const loadSegmentations = async () => {
-      if (isAllSeriesOfStudyCached()) {
-        const loadPromises = activeStudySegDisplaySets.map(
-          async (displaySet) => {
-            displaySet.getReferenceDisplaySet();
-            return displaySet.load({ headers });
-          }
-        );
-
-        await Promise.all(loadPromises);
-
-        activeStudySegDisplaySets.forEach(
-          async (displaySet) =>
-            await segmentationService.addSegmentationRepresentationToToolGroup(
-              'default',
-              displaySet.displaySetInstanceUID,
-              true
-            )
-        );
-
-        unsubscribe?.();
-      }
-    };
-
+  const loadSegmentations = async () => {
     if (isAllSeriesOfStudyCached()) {
-      loadSegmentations();
-    } else {
-      ({ unsubscribe } = CacheAPIService.subscribe(
-        CacheAPIService.EVENTS.IMAGE_CACHE_PREFETCHED,
-        loadSegmentations
-      ));
-    }
+      const loadPromises = activeStudySegDisplaySets.map(async (displaySet) => {
+        displaySet.getReferenceDisplaySet();
+        return displaySet.load({ headers });
+      });
 
-    eventTarget.removeEventListener(
-      Enums.Events.STACK_VIEWPORT_NEW_STACK,
-      newStackCreateListeners
-    );
+      await Promise.all(loadPromises);
+
+      activeStudySegDisplaySets.forEach(
+        async (displaySet) =>
+          await segmentationService.addSegmentationRepresentationToToolGroup(
+            'default',
+            displaySet.displaySetInstanceUID,
+            true
+          )
+      );
+
+      unsubscribe?.();
+    }
   };
 
-  const { activeViewportId } = viewportGridService.getState();
-  const viewport =
-    cornerstoneViewportService.getCornerstoneViewport(activeViewportId);
-  if (viewport.viewportStatus === Enums.ViewportStatus.RENDERED) {
-    newStackCreateListeners();
-    return;
+  if (isAllSeriesOfStudyCached()) {
+    loadSegmentations();
+  } else {
+    ({ unsubscribe } = CacheAPIService.subscribe(
+      CacheAPIService.EVENTS.IMAGE_CACHE_PREFETCHED,
+      loadSegmentations
+    ));
   }
+}
 
-  eventTarget.addEventListener(
-    Enums.Events.STACK_VIEWPORT_NEW_STACK,
-    newStackCreateListeners
-  );
+function isAllSegmentationsOfSeriesLoaded(
+  imageIds,
+  activeStudySegDisplaySets,
+  servicesManager
+) {
+  const { displaySetService, segmentationService } = servicesManager.services;
+
+  const loadedDisplaySet = displaySetService.getDisplaySetsBy((ds) =>
+    ds.images?.find((image) => imageIds.includes(image.imageId))
+  )?.[0];
+
+  return activeStudySegDisplaySets
+    .filter(
+      (ds) =>
+        ds.referencedSeriesInstanceUID === loadedDisplaySet.SeriesInstanceUID
+    )
+    .every((ds) =>
+      segmentationService.getSegmentation(ds.displaySetInstanceUID)
+    );
 }
 
 function getStudyInstanceUIDFromParams(params) {
