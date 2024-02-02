@@ -12,7 +12,7 @@ const addSegmentationLabelModifier = (servicesManager) => {
         return;
       }
 
-      const segmentationsCount = segmentationService.getSegmentations().length;
+      const segmentationsCount = segmentationService.getSegmentations(false).length;
       const increment = segmentationsCount > 0 ? ' ' + segmentationsCount : '';
 
       const label = displaySet.SeriesDescription + ' - Vessel' + increment;
