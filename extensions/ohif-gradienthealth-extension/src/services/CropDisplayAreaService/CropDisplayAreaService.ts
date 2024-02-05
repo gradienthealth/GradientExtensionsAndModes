@@ -3,7 +3,8 @@ import {
     EVENTS as CS_EVENTS,
     eventTarget as CornerstoneEventTarget,
     getEnabledElement,
-    cache
+    cache,
+    Enums as CSCORE_ENUMS
 } from '@cornerstonejs/core';
 import { Enums as CSTOOLS_ENUMS } from '@cornerstonejs/tools';
 
@@ -340,6 +341,15 @@ const handleFocusingForNewStack = (
 ) => {
   const canvasAspectRatio = viewport.sWidth / viewport.sHeight;
 
+  const eventElement =
+    viewport.type === CSCORE_ENUMS.ViewportType.STACK
+      ? CornerstoneEventTarget
+      : viewport.element;
+  const eventName =
+    viewport.type === CSCORE_ENUMS.ViewportType.STACK
+      ? CS_EVENTS.STACK_VIEWPORT_NEW_STACK
+      : CS_EVENTS.VOLUME_VIEWPORT_NEW_VOLUME;
+
   const newImageListener = (evt) => {
     const segDisplaySetsOfLoadedSeries = getSegDisplaysetsOfReferencedImagesIds(
       evt.detail.imageIds,
@@ -366,16 +376,10 @@ const handleFocusingForNewStack = (
       segmentationRenderedListener
     );
 
-    CornerstoneEventTarget.removeEventListener(
-      CS_EVENTS.STACK_VIEWPORT_NEW_STACK,
-      newImageListener
-    );
+    eventElement.removeEventListener(eventName, newImageListener);
   };
 
-  CornerstoneEventTarget.addEventListener(
-    CS_EVENTS.STACK_VIEWPORT_NEW_STACK,
-    newImageListener
-  );
+  eventElement.addEventListener(eventName, newImageListener);
 };
 
 const correctZoomFactors = (
