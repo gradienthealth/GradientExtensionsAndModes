@@ -88,7 +88,7 @@ export default class GoogleSheetsService {
         // segmentations in segmentation mode.
         eventTarget.addEventListener(
           Enums.Events.STACK_VIEWPORT_NEW_STACK,
-          (evt) => loadSegFiles(evt, this.serviceManager)
+          () => loadSegFiles(this.serviceManager)
         );
       }
 
@@ -328,8 +328,7 @@ export default class GoogleSheetsService {
   }
 }
 
-function loadSegFiles(evt, serviceManager) {
-  const { imageIds } = evt.detail;
+function loadSegFiles(serviceManager) {
   const params = new URLSearchParams(window.location.search);
   const studyInstanceUID = getStudyInstanceUIDFromParams(params);
 
@@ -356,7 +355,6 @@ function loadSegFiles(evt, serviceManager) {
     .flatMap((ds) => ds.images.flatMap((image) => image.imageId));
 
   const isAllSegmentationsLoaded = isAllSegmentationsOfSeriesLoaded(
-    imageIds,
     activeStudySegDisplaySets,
     serviceManager
   );
@@ -420,24 +418,14 @@ function loadSegFiles(evt, serviceManager) {
 }
 
 function isAllSegmentationsOfSeriesLoaded(
-  imageIds,
   activeStudySegDisplaySets,
   servicesManager
 ) {
-  const { displaySetService, segmentationService } = servicesManager.services;
+  const { segmentationService } = servicesManager.services;
 
-  const loadedDisplaySet = displaySetService.getDisplaySetsBy((ds) =>
-    ds.images?.find((image) => imageIds.includes(image.imageId))
-  )?.[0];
-
-  return activeStudySegDisplaySets
-    .filter(
-      (ds) =>
-        ds.referencedSeriesInstanceUID === loadedDisplaySet.SeriesInstanceUID
-    )
-    .every((ds) =>
-      segmentationService.getSegmentation(ds.displaySetInstanceUID)
-    );
+  return activeStudySegDisplaySets.every((ds) =>
+    segmentationService.getSegmentation(ds.displaySetInstanceUID)
+  );
 }
 
 function getStudyInstanceUIDFromParams(params) {
