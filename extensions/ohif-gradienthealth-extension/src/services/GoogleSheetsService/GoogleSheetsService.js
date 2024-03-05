@@ -216,7 +216,7 @@ export default class GoogleSheetsService {
     });
   }
 
-  async writeFormToRow(formValue) {
+  async updateRow(formValue) {
     const values = this.formHeader.map((colName) => {
       const index = this.formTemplate.findIndex((ele) => {
         return colName == ele.name;
@@ -236,6 +236,14 @@ export default class GoogleSheetsService {
       }
       return null;
     });
+
+    // google sheets is 1-indexed, so take rows[index-1]
+    const updatedFormValue = this.rows[this.index - 1].map((element, index) =>
+      values[index] !== null ? values[index] : element
+    );
+
+    this.rows[this.index - 1] = updatedFormValue;
+    this.formValue = formValue
 
     await this.writeRange(
       this.sheetId,
@@ -338,6 +346,7 @@ function loadSegFiles(serviceManager) {
     displaySetService,
     UserAuthenticationService,
     CacheAPIService,
+    viewportGridService
   } = serviceManager.services;
   const headers = UserAuthenticationService.getAuthorizationHeader();
 
@@ -394,7 +403,7 @@ function loadSegFiles(serviceManager) {
 
       await Promise.all(loadPromises);
 
-      activeStudySegDisplaySets.forEach(
+      const addRepresentationPromises = activeStudySegDisplaySets.map(
         async (displaySet) =>
           await segmentationService.addSegmentationRepresentationToToolGroup(
             'default',
@@ -403,6 +412,21 @@ function loadSegFiles(serviceManager) {
           )
       );
 
+      Promise.all(addRepresentationPromises).then(() => {
+        const { viewports, activeViewportId } = viewportGridService.getState();
+        const activeViewport = viewports.get(activeViewportId);
+        const segmentationsOfLoadedImage = displaySetService.getDisplaySetsBy(
+          (ds) =>
+            ds.referencedDisplaySetInstanceUID ===
+            activeViewport.displaySetInstanceUIDs[0]
+        );
+
+        // we are setting first segmentation of the image in the active viewport as active.
+        segmentationService.setActiveSegmentationForToolGroup(
+          segmentationsOfLoadedImage[0].displaySetInstanceUID
+        );
+      });
+      
       unsubscribe?.();
     }
   };
