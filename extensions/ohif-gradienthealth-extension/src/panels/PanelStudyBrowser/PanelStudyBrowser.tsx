@@ -301,8 +301,8 @@ function _mapDataSourceStudies(studies) {
 }
 
 function _mapDisplaySets(displaySets, thumbnailImageSrcMap) {
-  const thumbnailDisplaySets = [];
-  const thumbnailNoImageDisplaySets = [];
+  const thumbnailDisplaySets: any[] = [];
+  const thumbnailNoImageDisplaySets: any[] = [];
 
   displaySets
     .filter(ds => !ds.excludeFromThumbnailBrowser)
@@ -312,10 +312,30 @@ function _mapDisplaySets(displaySets, thumbnailImageSrcMap) {
 
       const array =
         componentType === 'thumbnail' ? thumbnailDisplaySets : thumbnailNoImageDisplaySets;
+      let seriesDescription = ds.SeriesDescription || '';
+      if (ds.Modality === 'SEG') {
+        const referencedDisplaySet = displaySets.find(
+          (displaySet) =>
+            displaySet.displaySetInstanceUID ===
+            ds.referencedDisplaySetInstanceUID
+        );
+
+        if (referencedDisplaySet) {
+          const { ViewPosition, ImageLaterality } =
+            referencedDisplaySet.instance;
+
+          if (ImageLaterality && ViewPosition) {
+            seriesDescription = seriesDescription.replace(
+              /^.* - Vessel/,
+              `${ImageLaterality} ${ViewPosition} - Vessel`
+            );
+          }
+        }
+      }
 
       array.push({
         displaySetInstanceUID: ds.displaySetInstanceUID,
-        description: ds.SeriesDescription || '',
+        description:seriesDescription ,
         seriesNumber: ds.SeriesNumber,
         modality: ds.Modality,
         seriesDate: ds.SeriesDate,
