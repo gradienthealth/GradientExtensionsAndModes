@@ -232,7 +232,7 @@ const mapSegSeriesFromDataSet = (dataSet) => {
   };
 };
 
-const storeDicomSeg = async (naturalizedReport, headers) => {
+const storeDicomSeg = async (naturalizedReport, headers, displaySetService) => {
   const {
     StudyInstanceUID,
     SeriesInstanceUID,
@@ -245,12 +245,25 @@ const storeDicomSeg = async (naturalizedReport, headers) => {
   const bucket =
     buckets[1] || buckets[0] || 'gradient-health-search-viewer-links';
   const prefix = params.get('bucket-prefix') || 'dicomweb';
-  const segBucket = params.get('seg-bucket') || bucket
+  let segBucket = params.get('seg-bucket') || bucket
   const segPrefix = params.get('seg-prefix') || prefix
+  const filteredDescription = SeriesDescription.replace(/[/]/g, '');
 
-  const fileName = `${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/instances/${SOPInstanceUID}/${encodeURIComponent(
-    SeriesDescription
+  let fileName = `${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/instances/${SOPInstanceUID}/${encodeURIComponent(
+    filteredDescription
   )}.dcm`;
+
+  const segDisplaySet = displaySetService.getDisplaySetsBy(
+    (ds) =>
+      ds.SeriesInstanceUID === SeriesInstanceUID &&
+      ds.instance.SOPInstanceUID === SOPInstanceUID
+  )[0];
+  if (segDisplaySet) {
+    const url = segDisplaySet.instance.url;
+    segBucket = url.split('https://storage.googleapis.com/')[1].split('/')[0];
+    fileName = url.split(`https://storage.googleapis.com/${segBucket}/`)[1];
+  }
+
   const segUploadUri = `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${fileName}`;
   const blob = datasetToBlob(naturalizedReport);
 
@@ -526,7 +539,11 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
         if (dataset.Modality === 'SEG') {
           const headers = servicesManager.services.UserAuthenticationService.getAuthorizationHeader()
           try {
-            await storeDicomSeg(dataset, headers)
+            await storeDicomSeg(
+              dataset,
+              headers,
+              servicesManager.services.displaySetService
+            );
           } catch (error) {
             throw error
           }
