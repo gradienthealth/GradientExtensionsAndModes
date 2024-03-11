@@ -139,8 +139,10 @@ export default class CacheAPIService {
       .flatMap((serie) =>
         serie.instances.flatMap((instance) => instance.imageId)
       );
-    this.cacheImageIds(imageIds);
-    this.cacheSegFiles(StudyInstanceUID);
+    await Promise.all([
+      this.cacheImageIds(imageIds),
+      this.cacheSegFiles(StudyInstanceUID),
+    ]);
   }
 
   public async cacheSeries(StudyInstanceUID, SeriesInstanceUID) {
@@ -154,9 +156,14 @@ export default class CacheAPIService {
     this.cacheImageIds(imageIds);
   }
 
-  public cacheImageIds(imageIds) {
+  public async cacheImageIds(imageIds) {
+    const promises: any[] = [];
+    
     function sendRequest(imageId, options) {
-      return imageLoader.loadAndCacheImage(imageId, options).then(
+      const promise = imageLoader.loadAndCacheImage(imageId, options);
+      promises.push(promise);
+
+      return promise.then(
         (imageLoadObject) => {
           this._broadcastEvent(this.EVENTS.IMAGE_CACHE_PREFETCHED, { imageLoadObject });
         },
@@ -184,16 +191,18 @@ export default class CacheAPIService {
         priority
       );
     });
+
+    await Promise.all(promises)
   }
 
-  public cacheSegFiles(studyInstanceUID) {
+  public async cacheSegFiles(studyInstanceUID) {
     const segSOPClassUIDs = ['1.2.840.10008.5.1.4.1.1.66.4'];
     const { displaySetService, userAuthenticationService } =
       this.servicesManager.services;
 
     const study = DicomMetadataStore.getStudy(studyInstanceUID);
     const headers = userAuthenticationService.getAuthorizationHeader();
-    study.series.forEach((serie) => {
+    const promises = study.series.map((serie) => {
       const { SOPClassUID, SeriesInstanceUID, url } = serie.instances[0];
       if (segSOPClassUIDs.includes(SOPClassUID)) {
         const { scheme, url: parsedUrl } = wadouri.parseImageId(url);
@@ -208,7 +217,7 @@ export default class CacheAPIService {
           return;
         }
 
-        fetch(parsedUrl, { headers })
+        return fetch(parsedUrl, { headers })
           .then((response) => response.arrayBuffer())
           .then((buffer) => wadouri.fileManager.add(new Blob([buffer])))
           .then((fileUri) => {
@@ -218,6 +227,8 @@ export default class CacheAPIService {
           });
       }
     });
+
+    await Promise.all(promises);
   }
 
   public updateCachedFile(blob, displaySet) {

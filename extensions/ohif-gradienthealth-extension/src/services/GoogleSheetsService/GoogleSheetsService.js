@@ -55,12 +55,26 @@ export default class GoogleSheetsService {
     const min = index - bufferBack < 2 ? 2 : index - bufferBack;
     const max = index + bufferFront;
     const urlIndex = this.formHeader.findIndex((name) => name == 'URL');
-    this.rows.slice(min - 1, max).forEach((row) => {
-      const url = row[urlIndex];
-      const params = new URLSearchParams('?' + url.split('?')[1]);
-      const StudyInstanceUID = getStudyInstanceUIDFromParams(params);
-      CacheAPIService.cacheStudy(StudyInstanceUID, params.getAll('bucket'));
-    });
+    const studyIdIndex = this.formHeader.findIndex((name) => name == 'ID');
+
+    const rowsToCache = this.rows.slice(min - 1, max);
+    const indexOfCurrentId = rowsToCache.findIndex(
+      (row) => row[studyIdIndex] === id
+    );
+    const element = rowsToCache.splice(indexOfCurrentId, 1);
+    rowsToCache.unshift(element[0]); // making the current studyid as first element
+
+    rowsToCache.reduce((promise, row) => {
+      return promise.then(() => {
+        const url = row[urlIndex];
+        const params = new URLSearchParams('?' + url.split('?')[1]);
+        const StudyInstanceUID = getStudyInstanceUIDFromParams(params);
+        return CacheAPIService.cacheStudy(
+          StudyInstanceUID,
+          params.getAll('bucket')
+        );
+      });
+    }, Promise.resolve());
   }
 
   setFormByStudyInstanceUID(id) {
