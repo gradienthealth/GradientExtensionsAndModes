@@ -264,8 +264,9 @@ const storeDicomSeg = async (naturalizedReport, headers, displaySetService) => {
     fileName = url.split(`https://storage.googleapis.com/${segBucket}/`)[1];
   }
 
-  const segUploadUri = `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${fileName}`;
+  const segUploadUri = `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${fileName}&contentEncoding=gzip`;
   const blob = datasetToBlob(naturalizedReport);
+  const compressedFile = pako.gzip(await blob.arrayBuffer());
 
   await fetch(segUploadUri, {
     method: 'POST',
@@ -273,7 +274,7 @@ const storeDicomSeg = async (naturalizedReport, headers, displaySetService) => {
       ...headers,
       'Content-Type': 'application/dicom',
     },
-    body: blob,
+    body: compressedFile,
   })
     .then((response) => response.json())
     .then((data) => {
