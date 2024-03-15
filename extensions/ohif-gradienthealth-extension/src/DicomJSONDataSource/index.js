@@ -53,6 +53,12 @@ const getInstanceUrl = (url, prefix) => {
   return modifiedUrl;
 }
 
+const getProperty = (serieMetadata, property) => {
+  return (
+    serieMetadata[property] || serieMetadata.instances[0].metadata[property]
+  );
+};
+
 const getMetadataFromRows = (rows, prefix, seriesuidArray) => {
   // TODO: bq should not have dups
   let filteredRows = rows.map(row => {
@@ -87,6 +93,7 @@ const getMetadataFromRows = (rows, prefix, seriesuidArray) => {
         SeriesDescription: row['SeriesDescription'] || 'No description',
         StudyInstanceUID: row['StudyInstanceUID'],
         SeriesNumber: row['SeriesNumber'],
+        SeriesDate: row['SeriesDate'],
         SeriesTime: row['SeriesTime'],
         NumInstances: isNaN(parseInt(row['NumInstances']))
           ? 0
@@ -101,16 +108,17 @@ const getMetadataFromRows = (rows, prefix, seriesuidArray) => {
     });
 
     return {
-      StudyInstanceUID: rows[0]['StudyInstanceUID'],
-      PatientName: rows[0]['PatientName'],
-      PatientSex: rows[0]['PatientSex'],
-      AccessionNumber: rows[0]['AccessionNumber'],
-      StudyDate: rows[0]['StudyDate'],
-      PatientID: rows[0]['PatientID'],
-      PatientWeight: rows[0]['PatientWeight'],
-      PatientAge: rows[0]['PatientAge'],
-      StudyDescription: rows[0]['StudyDescription'] || 'No description',
-      StudyTime: rows[0]['StudyTime'],
+      StudyInstanceUID: getProperty(rows[0], 'StudyInstanceUID'),
+      PatientName: getProperty(rows[0], 'PatientName'),
+      PatientSex: getProperty(rows[0], 'PatientSex') || '',
+      AccessionNumber: getProperty(rows[0], 'AccessionNumber'),
+      StudyDate: getProperty(rows[0], 'StudyDate'),
+      PatientID: getProperty(rows[0], 'PatientID'),
+      PatientWeight: getProperty(rows[0], 'PatientWeight') || '',
+      PatientAge: getProperty(rows[0], 'PatientAge') || '',
+      StudyDescription:
+        getProperty(rows[0], 'StudyDescription') || 'No description',
+      StudyTime: getProperty(rows[0], 'StudyTime'),
       NumInstances: studyNumInstances,
       Modalities: `["${rows[0]['Modality']}"]`,
       series: series,
@@ -216,7 +224,16 @@ const mapSegSeriesFromDataSet = (dataSet) => {
     SeriesDescription: dataSet.SeriesDescription,
     SeriesNumber: Number(dataSet.SeriesNumber),
     SeriesDate: dataSet.SeriesDate,
+    SeriesTime: dataSet.SeriesTime,
+    StudyDate: dataSet.StudyDate,
+    StudyTime: dataSet.StudyTime,
+    PatientName: dataSet.PatientName,
+    PatientID: dataSet.PatientID,
+    PatientWeight: dataSet.PatientWeight,
+    PatientAge: Number(dataSet.PatientAge),
+    AccessionNumber: Number(dataSet.AccessionNumber),
     StudyInstanceUID: dataSet.StudyInstanceUID,
+    StudyDescription: dataSet.StudyDescription,
     instances: [
       {
         metadata: {
@@ -224,10 +241,15 @@ const mapSegSeriesFromDataSet = (dataSet) => {
           SOPInstanceUID: dataSet.SOPInstanceUID,
           SOPClassUID: dataSet.SOPClassUID,
           ReferencedSeriesSequence: dataSet.ReferencedSeriesSequence,
-          SharedFunctionalGroupsSequence: dataSet.SharedFunctionalGroupsSequence,
+          SharedFunctionalGroupsSequence:
+            dataSet.SharedFunctionalGroupsSequence,
+          PerFrameFunctionalGroupsSequence:
+            dataSet.PerFrameFunctionalGroupsSequence,
+          SegmentSequence: dataSet.SegmentSequence,
+          Manufacturer: dataSet.Manufacturer,
         },
         url: dataSet.url,
-      }
+      },
     ],
   };
 };
