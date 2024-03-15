@@ -53,7 +53,7 @@ function PanelForm({ servicesManager, extensionManager }) {
   useEffect(() => {
     if(!firstLoad){
       setLoading(true)
-      GoogleSheetsService.writeFormToRow(formValue).then((values)=>{
+      GoogleSheetsService.updateRow(formValue).then((values)=>{
         setLoading(false)
       })
     }

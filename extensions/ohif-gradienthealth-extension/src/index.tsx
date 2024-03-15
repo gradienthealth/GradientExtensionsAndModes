@@ -7,6 +7,7 @@ import { id } from './id.js';
 import GoogleSheetsService from './services/GoogleSheetsService';
 import CropDisplayAreaService from './services/CropDisplayAreaService';
 import CacheAPIService from './services/CacheAPIService';
+import addSegmentationLabelModifier from './utils/addSegmentationLabelModifier';
 
 // import { CornerstoneEventTarget } from '@cornerstonejs/core/CornerstoneEventTarget';
 // import { Events } from '@cornerstonejs/core/Events';
@@ -16,6 +17,9 @@ const gradientHealthExtension = {
    * Only required property. Should be a unique value across all extensions.
    */
   id,
+  onModeEnter({ servicesManager}){
+    addSegmentationLabelModifier(servicesManager)
+  },
   getDataSourcesModule: ({ servicesManager }) => {
     return getDataSourcesModule({ servicesManager });
   },

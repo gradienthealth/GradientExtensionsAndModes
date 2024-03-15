@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import PropTypes from 'prop-types';
 
-import PanelStudyBrowserTracking from './PanelStudyBrowserTracking';
+import PanelStudyBrowser from './PanelStudyBrowser';
 import { studyPanelUtilities } from '../utils';
 
 const {
@@ -17,28 +17,28 @@ const {
  * @param {object} commandsManager
  * @param {object} extensionManager
  */
-function WrappedPanelStudyBrowserTracking({
+function WrappedPanelStudyBrowser({
   commandsManager,
   extensionManager,
   servicesManager,
 }) {
-  const dataSource = extensionManager.getActiveDataSource()[0];
-
+  // TODO: This should be made available a different way; route should have
+  // already determined our datasource
+  const dataSource = extensionManager.getDataSources()[0];
   const _getStudiesForPatientByMRN = getStudyForPatientUtility(
     extensionManager,
     dataSource
   );
-  const _getImageSrcFromImageId =
-    createGetImageSrcFromImageIdFn(extensionManager);
+  const _getImageSrcFromImageId = useCallback(
+    createGetImageSrcFromImageIdFn(extensionManager),
+    []
+  );
   const _requestDisplaySetCreationForStudy =
     createRequestDisplaySetcreationFn(dataSource);
 
   return (
-    <PanelStudyBrowserTracking
-      MeasurementService={servicesManager.services.MeasurementService}
-      DisplaySetService={servicesManager.services.DisplaySetService}
-      UIDialogService={servicesManager.services.UIDialogService}
-      UINotificationService={servicesManager.services.UINotificationService}
+    <PanelStudyBrowser
+      servicesManager={servicesManager}
       dataSource={dataSource}
       getImageSrc={_getImageSrcFromImageId}
       getStudiesForPatientByMRN={_getStudiesForPatientByMRN}
@@ -47,10 +47,10 @@ function WrappedPanelStudyBrowserTracking({
   );
 }
 
-WrappedPanelStudyBrowserTracking.propTypes = {
+WrappedPanelStudyBrowser.propTypes = {
   commandsManager: PropTypes.object.isRequired,
   extensionManager: PropTypes.object.isRequired,
   servicesManager: PropTypes.object.isRequired,
 };
 
-export default WrappedPanelStudyBrowserTracking;
+export default WrappedPanelStudyBrowser;

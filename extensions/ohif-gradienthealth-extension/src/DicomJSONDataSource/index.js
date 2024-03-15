@@ -179,7 +179,7 @@ const getBigQueryRows = async (studyuids, seriesuid, access_token) => {
 
 const filesFromStudyInstanceUID = async ({bucketName, prefix, studyuids, headers})=>{
   const studyMetadata = studyuids.map(async (studyuid) => {
-    const folderPath = `${prefix}/${studyuid}/`;
+    const folderPath = `${prefix}/studies/${studyuid}/series/`;
     const delimiter = '/'
     const apiUrl = `https://storage.googleapis.com/storage/v1/b/${bucketName}/o?prefix=${folderPath}&delimiter=${delimiter}`;
     const response = await fetch(apiUrl, { headers });
@@ -187,7 +187,7 @@ const filesFromStudyInstanceUID = async ({bucketName, prefix, studyuids, headers
     const files = res.items || [];
     const folders = res.prefixes || [];
     const series = folders.map(async (folderPath)=>{
-      const objectName = `${folderPath}metadata.json.gz`;
+      const objectName = `${folderPath}metadata`;
       const apiUrl = `https://storage.googleapis.com/storage/v1/b/${bucketName}/o/${encodeURIComponent(objectName)}?alt=media`;
       const response = await fetch(apiUrl, { headers });
       return response.json()
@@ -232,7 +232,7 @@ const mapSegSeriesFromDataSet = (dataSet) => {
   };
 };
 
-const storeDicomSeg = async (naturalizedReport, headers) => {
+const storeDicomSeg = async (naturalizedReport, headers, displaySetService) => {
   const {
     StudyInstanceUID,
     SeriesInstanceUID,
@@ -241,16 +241,32 @@ const storeDicomSeg = async (naturalizedReport, headers) => {
   } = naturalizedReport;
 
   const params = new URLSearchParams(window.location.search);
-  const bucket = params.get('bucket') || 'gradient-health-search-viewer-links';
+  const buckets = params.getAll('bucket');
+  const bucket =
+    buckets[1] || buckets[0] || 'gradient-health-search-viewer-links';
   const prefix = params.get('bucket-prefix') || 'dicomweb';
-  const segBucket = params.get('seg-bucket') || bucket
+  let segBucket = params.get('seg-bucket') || bucket
   const segPrefix = params.get('seg-prefix') || prefix
+  const filteredDescription = SeriesDescription.replace(/[/]/g, '');
 
-  const fileName = `${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/instances/${SOPInstanceUID}/${encodeURIComponent(
-    SeriesDescription
+  let fileName = `${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/instances/${SOPInstanceUID}/${encodeURIComponent(
+    filteredDescription
   )}.dcm`;
-  const segUploadUri = `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${fileName}`;
+
+  const segDisplaySet = displaySetService.getDisplaySetsBy(
+    (ds) =>
+      ds.SeriesInstanceUID === SeriesInstanceUID &&
+      ds.instance.SOPInstanceUID === SOPInstanceUID
+  )[0];
+  if (segDisplaySet) {
+    const url = segDisplaySet.instance.url;
+    segBucket = url.split('https://storage.googleapis.com/')[1].split('/')[0];
+    fileName = url.split(`https://storage.googleapis.com/${segBucket}/`)[1];
+  }
+
+  const segUploadUri = `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${fileName}&contentEncoding=gzip`;
   const blob = datasetToBlob(naturalizedReport);
+  const compressedFile = pako.gzip(await blob.arrayBuffer());
 
   await fetch(segUploadUri, {
     method: 'POST',
@@ -258,7 +274,7 @@ const storeDicomSeg = async (naturalizedReport, headers) => {
       ...headers,
       'Content-Type': 'application/dicom',
     },
-    body: blob,
+    body: compressedFile,
   })
     .then((response) => response.json())
     .then((data) => {
@@ -275,7 +291,7 @@ const storeDicomSeg = async (naturalizedReport, headers) => {
       const compressedFile = pako.gzip(JSON.stringify(segSeries));
 
       return fetch(
-        `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${segPrefix}/${StudyInstanceUID}/${SeriesInstanceUID}/metadata.json.gz&contentEncoding=gzip`,
+        `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/metadata&contentEncoding=gzip`,
         {
           method: 'POST',
           headers: {
@@ -320,6 +336,10 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
     },
     initialize: async ({ params, query, url }) => {
       if (!url) url = query.get('url');
+      if (!url) {
+        url = query.toString();
+        query.set('url', url);
+      }
       let metaData = getMetaDataByURL(url);
 
       // if we have already cached the data from this specific url
@@ -331,19 +351,29 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
         });
       }
 
+      const buckets = query.getAll('bucket');
+      if (buckets.length === 0)
+        buckets.push('gradient-health-search-viewer-links');
+
       const { UserAuthenticationService } = servicesManager.services;
-      const studyMetadata = await filesFromStudyInstanceUID({
-        bucketName: query.get('bucket') || 'gradient-health-search-viewer-links',
-        prefix: query.get('bucket-prefix') || 'dicomweb',
-        studyuids: query.getAll('StudyInstanceUID'),
-        headers: UserAuthenticationService.getAuthorizationHeader()
-      });
+
+      const studyMetadata = [];
+      for (let i = 0; i < buckets.length; i++) {
+        const metadataPerBucket = await filesFromStudyInstanceUID({
+          bucketName: buckets[i],
+          prefix: query.get('bucket-prefix') || 'dicomweb',
+          studyuids: query.getAll('StudyInstanceUID'),
+          headers: UserAuthenticationService.getAuthorizationHeader(),
+        });
+
+        studyMetadata.push(...metadataPerBucket);
+      }
 
       const data = getMetadataFromRows(
-        _.flatten(studyMetadata), 
-        query.get('prefix'), 
+        _.flatten(studyMetadata),
+        query.get('prefix'),
         query.getAll('SeriesInstanceUID')
-      );      
+      );
 
       let StudyInstanceUID;
       let SeriesInstanceUID;
@@ -422,8 +452,9 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
         console.debug('Not implemented', params)
       },
       series: {
-        metadata: ({
+        metadata: async ({
           StudyInstanceUID,
+          buckets = [],
           madeInClient = false,
           customSort,
         } = {}) => {
@@ -433,7 +464,22 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
             );
           }
 
-          const study = findStudies('StudyInstanceUID', StudyInstanceUID)[0];
+          let study = findStudies('StudyInstanceUID', StudyInstanceUID)[0];
+
+          if (!study) {
+            // If the study is not found, initialize the study.
+            // If there is no buckets in the url default bucket will be used.
+            const params = new URLSearchParams(window.location.search);
+            params.set('StudyInstanceUID', StudyInstanceUID);
+            params.delete('bucket');
+            buckets.forEach((bucket) => {
+              params.append('bucket', bucket);
+            });
+            await implementation.initialize({ query: params });
+
+            study = findStudies('StudyInstanceUID', StudyInstanceUID)[0];
+          }
+
           let series;
 
           if (customSort) {
@@ -494,7 +540,11 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
         if (dataset.Modality === 'SEG') {
           const headers = servicesManager.services.UserAuthenticationService.getAuthorizationHeader()
           try {
-            await storeDicomSeg(dataset, headers)
+            await storeDicomSeg(
+              dataset,
+              headers,
+              servicesManager.services.displaySetService
+            );
           } catch (error) {
             throw error
           }

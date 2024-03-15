@@ -1,3 +1,5 @@
+import { eventTarget, Enums, cache } from '@cornerstonejs/core';
+import { utilities as csToolsUtils } from '@cornerstonejs/tools';
 import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
 import { alphabet } from './utils';
 
@@ -53,12 +55,26 @@ export default class GoogleSheetsService {
     const min = index - bufferBack < 2 ? 2 : index - bufferBack;
     const max = index + bufferFront;
     const urlIndex = this.formHeader.findIndex((name) => name == 'URL');
-    this.rows.slice(min, max).forEach((row) => {
-      const url = row[urlIndex];
-      const params = new URLSearchParams('?' + url.split('?')[1]);
-      const StudyInstanceUID = params.get('StudyInstanceUIDs');
-      CacheAPIService.cacheStudy(StudyInstanceUID);
-    });
+    const studyIdIndex = this.formHeader.findIndex((name) => name == 'ID');
+
+    const rowsToCache = this.rows.slice(min - 1, max);
+    const indexOfCurrentId = rowsToCache.findIndex(
+      (row) => row[studyIdIndex] === id
+    );
+    const element = rowsToCache.splice(indexOfCurrentId, 1);
+    rowsToCache.unshift(element[0]); // making the current studyid as first element
+
+    rowsToCache.reduce((promise, row) => {
+      return promise.then(() => {
+        const url = row[urlIndex];
+        const params = new URLSearchParams('?' + url.split('?')[1]);
+        const StudyInstanceUID = getStudyInstanceUIDFromParams(params);
+        return CacheAPIService.cacheStudy(
+          StudyInstanceUID,
+          params.getAll('bucket')
+        );
+      });
+    }, Promise.resolve());
   }
 
   setFormByStudyInstanceUID(id) {
@@ -79,6 +95,16 @@ export default class GoogleSheetsService {
       const { UserAuthenticationService } = this.serviceManager.services;
       this.user = UserAuthenticationService.getUser();
       const params = new URLSearchParams(window.location.search);
+
+      if (window.location.pathname.startsWith('/segmentation')) {
+        // Since sheet panel only used by segmentation and breast density mode,
+        // and breast density mode does not handles segmentation we are only loading
+        // segmentations in segmentation mode.
+        eventTarget.addEventListener(
+          Enums.Events.STACK_VIEWPORT_NEW_STACK,
+          () => loadSegFiles(this.serviceManager)
+        );
+      }
 
       if (!params.get('sheetId'))
         return this._broadcastEvent(EVENTS.GOOGLE_SHEETS_ERROR);
@@ -101,14 +127,14 @@ export default class GoogleSheetsService {
       this.studyUIDToIndex = this.rows.slice(1).reduce((prev, curr, idx) => {
         const url = curr[urlIndex];
         const params = new URLSearchParams('?' + url.split('?')[1]);
-        const StudyInstanceUID = params.get('StudyInstanceUIDs');
+        const StudyInstanceUID = getStudyInstanceUIDFromParams(params);
 
         // Google Sheets is 1-indexed and we ignore first row as header row thus + 2
         prev[StudyInstanceUID] = idx + 2;
         return prev;
       }, {});
 
-      this.index = this.studyUIDToIndex[params.get('StudyInstanceUIDs')];
+      this.index = this.studyUIDToIndex[getStudyInstanceUIDFromParams(params)];
 
       // Map formTemplate and formValue
       const values = this.settings.values[0].map((_, colIndex) =>
@@ -143,7 +169,7 @@ export default class GoogleSheetsService {
         })
         .sort((a, b) => a.order - b.order);
 
-      this.setFormByStudyInstanceUID(params.get('StudyInstanceUIDs'));
+      this.setFormByStudyInstanceUID(getStudyInstanceUIDFromParams(params));
     } catch (e) {
       console.error(e);
       this._broadcastEvent(EVENTS.GOOGLE_SHEETS_ERROR);
@@ -204,7 +230,7 @@ export default class GoogleSheetsService {
     });
   }
 
-  async writeFormToRow(formValue) {
+  async updateRow(formValue) {
     const values = this.formHeader.map((colName) => {
       const index = this.formTemplate.findIndex((ele) => {
         return colName == ele.name;
@@ -225,6 +251,14 @@ export default class GoogleSheetsService {
       return null;
     });
 
+    // google sheets is 1-indexed, so take rows[index-1]
+    const updatedFormValue = this.rows[this.index - 1].map((element, index) =>
+      values[index] !== null ? values[index] : element
+    );
+
+    this.rows[this.index - 1] = updatedFormValue;
+    this.formValue = formValue
+
     await this.writeRange(
       this.sheetId,
       this.sheetName,
@@ -244,8 +278,12 @@ export default class GoogleSheetsService {
 
   async getRow(delta) {
     try {
-      const { DisplaySetService, HangingProtocolService, CacheAPIService } =
-        this.serviceManager.services;
+      const {
+        DisplaySetService,
+        HangingProtocolService,
+        CacheAPIService,
+        SegmentationService,
+      } = this.serviceManager.services;
       const rowValues = this.rows[this.index + delta - 1];
       if (!rowValues) {
         window.location.href = `https://docs.google.com/spreadsheets/d/${this.sheetId}`;
@@ -253,13 +291,17 @@ export default class GoogleSheetsService {
       const index = this.formHeader.findIndex((name) => name == 'URL');
       const url = rowValues[index];
       const params = new URLSearchParams('?' + url.split('?')[1]);
-      const StudyInstanceUID = params.get('StudyInstanceUIDs');
+      const StudyInstanceUID = getStudyInstanceUIDFromParams(params);
+      const buckets = params.getAll('bucket');
       if (!StudyInstanceUID) {
         window.location.href = `https://docs.google.com/spreadsheets/d/${this.sheetId}`;
       }
       const dataSource = this.extensionManager.getActiveDataSource()[0];
-      await dataSource.retrieve.series.metadata({ StudyInstanceUID });
+      await dataSource.retrieve.series.metadata({ StudyInstanceUID, buckets });
       const studies = [DicomMetadataStore.getStudy(StudyInstanceUID)];
+      const activeProtocolId =
+        HangingProtocolService.getActiveProtocol().protocol.id;
+      HangingProtocolService.reset();
       HangingProtocolService.run(
         {
           studies,
@@ -270,11 +312,24 @@ export default class GoogleSheetsService {
             }
           ),
         },
-        'breast'
+        activeProtocolId
+      );
+      const segmentations = SegmentationService.getSegmentations();
+      segmentations.forEach((segmentation) =>
+        SegmentationService.remove(segmentation.id)
       );
 
       const nextParams = new URLSearchParams(window.location.search);
-      nextParams.set('StudyInstanceUIDs', StudyInstanceUID);
+      if (nextParams.get('StudyInstanceUIDs'))
+        nextParams.set('StudyInstanceUIDs', StudyInstanceUID);
+      else {
+        nextParams.set('StudyInstanceUID', StudyInstanceUID);
+      }
+      nextParams.delete('bucket');
+      buckets.forEach((bucket) => {
+        nextParams.append('bucket', bucket);
+      });
+
       const nextURL =
         window.location.href.split('?')[0] + '?' + nextParams.toString();
       window.history.replaceState({}, null, nextURL);
@@ -293,4 +348,125 @@ export default class GoogleSheetsService {
     this.formValue = null;
     this._broadcastEvent(EVENTS.GOOGLE_SHEETS_ERROR);
   }
+}
+
+function loadSegFiles(serviceManager) {
+  const params = new URLSearchParams(window.location.search);
+  const studyInstanceUID = getStudyInstanceUIDFromParams(params);
+
+  const segSOPClassUIDs = ['1.2.840.10008.5.1.4.1.1.66.4'];
+  const {
+    segmentationService,
+    displaySetService,
+    UserAuthenticationService,
+    CacheAPIService,
+    viewportGridService
+  } = serviceManager.services;
+  const headers = UserAuthenticationService.getAuthorizationHeader();
+
+  const activeStudySegDisplaySets = displaySetService.getDisplaySetsBy(
+    (ds) =>
+      ds.StudyInstanceUID === studyInstanceUID &&
+      segSOPClassUIDs.includes(ds.SOPClassUID)
+  );
+  const nonSegImageIds = displaySetService
+    .getDisplaySetsBy(
+      (ds) =>
+        ds.StudyInstanceUID === studyInstanceUID &&
+        !segSOPClassUIDs.includes(ds.SOPClassUID)
+    )
+    .flatMap((ds) => ds.images.flatMap((image) => image.imageId));
+
+  const isAllSegmentationsLoaded = isAllSegmentationsOfSeriesLoaded(
+    activeStudySegDisplaySets,
+    serviceManager
+  );
+
+  if (isAllSegmentationsLoaded) {
+    const renderedToolGroupIds = [];
+
+    activeStudySegDisplaySets.forEach((ds) => {
+      const toolGroupIds = segmentationService.getToolGroupIdsWithSegmentation(
+        ds.displaySetInstanceUID
+      );
+      toolGroupIds.forEach((toolGroupId) => {
+        if (renderedToolGroupIds.includes(toolGroupId)) {
+          return;
+        }
+
+        csToolsUtils.segmentation.triggerSegmentationRender(toolGroupId);
+        renderedToolGroupIds.push(toolGroupId);
+      });
+    });
+
+    return;
+  }
+
+  const isAllSeriesOfStudyCached = () => {
+    return nonSegImageIds.every((imageId) => cache.getImageLoadObject(imageId));
+  };
+
+  let unsubscribe;
+
+  const loadSegmentations = async () => {
+    if (isAllSeriesOfStudyCached()) {
+      const loadPromises = activeStudySegDisplaySets.map(async (displaySet) => {
+        displaySet.getReferenceDisplaySet();
+        return displaySet.load({ headers });
+      });
+
+      await Promise.all(loadPromises);
+
+      const addRepresentationPromises = activeStudySegDisplaySets.map(
+        async (displaySet) =>
+          await segmentationService.addSegmentationRepresentationToToolGroup(
+            'default',
+            displaySet.displaySetInstanceUID,
+            true
+          )
+      );
+
+      Promise.all(addRepresentationPromises).then(() => {
+        const { viewports, activeViewportId } = viewportGridService.getState();
+        const activeViewport = viewports.get(activeViewportId);
+        const segmentationsOfLoadedImage = displaySetService.getDisplaySetsBy(
+          (ds) =>
+            ds.referencedDisplaySetInstanceUID ===
+            activeViewport.displaySetInstanceUIDs[0]
+        );
+
+        // we are setting first segmentation of the image in the active viewport as active.
+        segmentationService.setActiveSegmentationForToolGroup(
+          segmentationsOfLoadedImage[0].displaySetInstanceUID
+        );
+      });
+      
+      unsubscribe?.();
+    }
+  };
+
+  if (isAllSeriesOfStudyCached()) {
+    loadSegmentations();
+  } else {
+    ({ unsubscribe } = CacheAPIService.subscribe(
+      CacheAPIService.EVENTS.IMAGE_CACHE_PREFETCHED,
+      loadSegmentations
+    ));
+  }
+}
+
+function isAllSegmentationsOfSeriesLoaded(
+  activeStudySegDisplaySets,
+  servicesManager
+) {
+  const { segmentationService } = servicesManager.services;
+
+  return activeStudySegDisplaySets.every((ds) =>
+    segmentationService.getSegmentation(ds.displaySetInstanceUID)
+  );
+}
+
+function getStudyInstanceUIDFromParams(params) {
+  // Breast OHIF dicomweb datasource uses StudyInstanceUIDs, but bq datasource uses StudyInstanceUID
+  return params.get('StudyInstanceUIDs') || params.get('StudyInstanceUID');
 }
