@@ -305,37 +305,19 @@ function _mapDisplaySets(displaySets, thumbnailImageSrcMap) {
   const thumbnailNoImageDisplaySets: any[] = [];
 
   displaySets
-    .filter(ds => !ds.excludeFromThumbnailBrowser)
-    .forEach(ds => {
+    .filter((ds) => !ds.excludeFromThumbnailBrowser)
+    .forEach((ds) => {
       const imageSrc = thumbnailImageSrcMap[ds.displaySetInstanceUID];
       const componentType = _getComponentType(ds);
 
       const array =
-        componentType === 'thumbnail' ? thumbnailDisplaySets : thumbnailNoImageDisplaySets;
-      let seriesDescription = ds.SeriesDescription || '';
-      if (ds.Modality === 'SEG') {
-        const referencedDisplaySet = displaySets.find(
-          (displaySet) =>
-            displaySet.displaySetInstanceUID ===
-            ds.referencedDisplaySetInstanceUID
-        );
-
-        if (referencedDisplaySet) {
-          const { ViewPosition, ImageLaterality } =
-            referencedDisplaySet.instance;
-
-          if (ImageLaterality && ViewPosition) {
-            seriesDescription = seriesDescription.replace(
-              /^.* - Vessel/,
-              `${ImageLaterality} ${ViewPosition} - Vessel`
-            );
-          }
-        }
-      }
+        componentType === 'thumbnail'
+          ? thumbnailDisplaySets
+          : thumbnailNoImageDisplaySets;
 
       array.push({
         displaySetInstanceUID: ds.displaySetInstanceUID,
-        description:seriesDescription ,
+        description: ds.SeriesDescription || '',
         seriesNumber: ds.SeriesNumber,
         modality: ds.Modality,
         seriesDate: ds.SeriesDate,
