@@ -96,7 +96,7 @@ export default class GoogleSheetsService {
       this.user = UserAuthenticationService.getUser();
       const params = new URLSearchParams(window.location.search);
 
-      if (window.location.pathname.startsWith('/segmentation')) {
+      if (window.location.pathname.includes('/segmentation')) {
         // Since sheet panel only used by segmentation and breast density mode,
         // and breast density mode does not handles segmentation we are only loading
         // segmentations in segmentation mode.
