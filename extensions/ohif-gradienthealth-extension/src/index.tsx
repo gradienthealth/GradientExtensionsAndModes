@@ -8,7 +8,12 @@ import GoogleSheetsService from './services/GoogleSheetsService';
 import CropDisplayAreaService from './services/CropDisplayAreaService';
 import CacheAPIService from './services/CacheAPIService';
 import addSegmentationLabelModifier from './utils/addSegmentationLabelModifier';
-
+import {
+  getObjectVersions,
+  restoreObjectVersion,
+} from './utils/cloudObjectVersionActions';
+import parseUrlToBucketAndFileName from './utils/parseUrlToBucketAndFileName';
+import confirmSEGVersionRestore from './utils/confirmSEGVersionRestore';
 // import { CornerstoneEventTarget } from '@cornerstonejs/core/CornerstoneEventTarget';
 // import { Events } from '@cornerstonejs/core/Events';
 
@@ -40,6 +45,19 @@ const gradientHealthExtension = {
         return viewCodeSeq[0].CodeValue
       }
     );
+  },
+  getUtilityModule() {
+    return [
+      {
+        name: 'version',
+        exports: {
+          getObjectVersions,
+          restoreObjectVersion,
+          parseUrlToBucketAndFileName,
+          confirmSEGVersionRestore,
+        },
+      },
+    ];
   },
 };
 

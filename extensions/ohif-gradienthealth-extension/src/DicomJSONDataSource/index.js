@@ -10,6 +10,11 @@ import {
 
 import getImageId from '../DicomWebDataSource/utils/getImageId';
 import _ from 'lodash';
+import {
+  getCurrentLiveVersion,
+  removeObjectsVersions,
+} from '../utils/cloudObjectVersionActions';
+import parseUrlToBucketAndFileName from '../utils/parseUrlToBucketAndFileName';
 
 const metadataProvider = classes.MetadataProvider;
 const { datasetToBlob } = dcmjs.data;
@@ -254,6 +259,40 @@ const mapSegSeriesFromDataSet = (dataSet) => {
   };
 };
 
+const removeCurrentSegVersionsIfNecessary = async (
+  bucket,
+  currentDicomVersionDetails,
+  currentJsonVersionDetails,
+  headers
+) => {
+  const objectsVersionsAndFileNames = [];
+
+  // Remove the current version of metadata json file since we only need a single version.
+  if (currentJsonVersionDetails) {
+    objectsVersionsAndFileNames.push(currentJsonVersionDetails);
+  }
+
+  if (
+    currentDicomVersionDetails &&
+    Date.now() - Date.parse(currentDicomVersionDetails.version.updated) <=
+      5 * 60 * 1000 // 5 minutes
+  ) {
+    // Remove the current version of segmentation dicom files if the last modification is within 5 minutes
+    objectsVersionsAndFileNames.push(currentDicomVersionDetails);
+  }
+
+  return removeObjectsVersions(
+    bucket,
+    objectsVersionsAndFileNames,
+    headers
+  ).catch((error) => {
+    throw new Error(
+      error.message ||
+        'Failed to remove previous version of dicom file and/or json file'
+    );
+  });
+};
+
 const storeDicomSeg = async (naturalizedReport, headers, displaySetService) => {
   const {
     StudyInstanceUID,
@@ -271,22 +310,34 @@ const storeDicomSeg = async (naturalizedReport, headers, displaySetService) => {
   const segPrefix = params.get('seg-prefix') || prefix
   const filteredDescription = SeriesDescription.replace(/[/]/g, '');
 
-  let fileName = `${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/instances/${SOPInstanceUID}/${encodeURIComponent(
+  let dicomFileName = `${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/instances/${SOPInstanceUID}/${encodeURIComponent(
     filteredDescription
   )}.dcm`;
+  const jsonFileName = `${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/metadata`;
 
   const segDisplaySet = displaySetService.getDisplaySetsBy(
     (ds) =>
       ds.SeriesInstanceUID === SeriesInstanceUID &&
       ds.instance.SOPInstanceUID === SOPInstanceUID
   )[0];
+
+  let currentDicomVersionDetails, currentJsonVersionDetails;
   if (segDisplaySet) {
     const url = segDisplaySet.instance.url;
-    segBucket = url.split('https://storage.googleapis.com/')[1].split('/')[0];
-    fileName = url.split(`https://storage.googleapis.com/${segBucket}/`)[1];
+    ({ bucket: segBucket, fileName: dicomFileName } =
+      parseUrlToBucketAndFileName(url));
+
+    currentDicomVersionDetails = {
+      fileName: dicomFileName,
+      version: await getCurrentLiveVersion(segBucket, dicomFileName, headers),
+    };
+    currentJsonVersionDetails = {
+      fileName: jsonFileName,
+      version: await getCurrentLiveVersion(segBucket, jsonFileName, headers),
+    };
   }
 
-  const segUploadUri = `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${fileName}&contentEncoding=gzip`;
+  const segUploadUri = `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${dicomFileName}&contentEncoding=gzip`;
   const blob = datasetToBlob(naturalizedReport);
   const compressedFile = pako.gzip(await blob.arrayBuffer());
 
@@ -313,7 +364,7 @@ const storeDicomSeg = async (naturalizedReport, headers, displaySetService) => {
       const compressedFile = pako.gzip(JSON.stringify(segSeries));
 
       return fetch(
-        `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/metadata&contentEncoding=gzip`,
+        `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${jsonFileName}&contentEncoding=gzip`,
         {
           method: 'POST',
           headers: {
@@ -326,10 +377,15 @@ const storeDicomSeg = async (naturalizedReport, headers, displaySetService) => {
         .then((response) => response.json())
         .then((data) => {
           if (data.error) {
-            throw new Error(
-              `${data.error.code}: ${data.error.message}`
-            );
+            throw new Error(`${data.error.code}: ${data.error.message}`);
           }
+
+          return removeCurrentSegVersionsIfNecessary(
+            segBucket,
+            currentDicomVersionDetails,
+            currentJsonVersionDetails,
+            headers
+          );
         })
         .catch((error) => {
           throw new Error(error.message || 'Failed to store DicomSeg metadata')
