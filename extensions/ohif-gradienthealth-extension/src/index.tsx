@@ -9,6 +9,7 @@ import CropDisplayAreaService from './services/CropDisplayAreaService';
 import CacheAPIService from './services/CacheAPIService';
 import addSegmentationLabelModifier from './utils/addSegmentationLabelModifier';
 import {
+  getCurrentLiveVersion,
   getObjectVersions,
   restoreObjectVersion,
 } from './utils/cloudObjectVersionActions';
@@ -52,6 +53,7 @@ const gradientHealthExtension = {
         name: 'version',
         exports: {
           getObjectVersions,
+          getCurrentLiveVersion,
           restoreObjectVersion,
           parseUrlToBucketAndFileName,
           confirmSEGVersionRestore,

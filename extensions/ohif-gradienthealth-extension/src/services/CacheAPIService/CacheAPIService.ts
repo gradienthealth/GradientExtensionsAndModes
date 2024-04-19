@@ -9,6 +9,8 @@ import {
   imageLoader,
   imageLoadPoolManager,
 } from '@cornerstonejs/core';
+import { getCurrentLiveVersion } from '../../utils/cloudObjectVersionActions';
+import parseUrlToBucketAndFileName from '../../utils/parseUrlToBucketAndFileName';
 
 const LOCAL_EVENTS = {
   IMAGE_CACHE_PREFETCHED: 'event::gradienthealth::image_cache_prefetched',
@@ -87,6 +89,10 @@ export default class CacheAPIService {
         }
       });
     }
+  }
+
+  public getImageIdToFileUriMap() {
+    return new Map(this.imageIdToFileUriMap);
   }
 
   public async setViewedStudy(StudyInstanceUID) {
@@ -202,9 +208,28 @@ export default class CacheAPIService {
 
     const study = DicomMetadataStore.getStudy(studyInstanceUID);
     const headers = userAuthenticationService.getAuthorizationHeader();
-    const promises = study.series.map((serie) => {
-      const { SOPClassUID, SeriesInstanceUID, url } = serie.instances[0];
+    const promises = study.series.map(async (serie) => {
+      const { SOPClassUID, SeriesInstanceUID } = serie.instances[0];
+      let { url } = serie.instances[0];
+
       if (segSOPClassUIDs.includes(SOPClassUID)) {
+        const urlObject = new URL(url);
+        if (!urlObject.searchParams.get('generation')) {
+          // Adding live generation params to the url if not present.
+          const { bucket, fileName } = parseUrlToBucketAndFileName(url);
+          const liveVersion = await getCurrentLiveVersion(
+            bucket,
+            fileName,
+            headers
+          );
+          liveVersion &&
+            urlObject.searchParams.set(
+              'generation',
+              liveVersion.generation as string
+            );
+          url = urlObject.toString();
+        }
+
         const { scheme, url: parsedUrl } = wadouri.parseImageId(url);
         if (scheme === 'dicomzip') {
           return wadouri.loadZipRequest(parsedUrl, url);
@@ -222,10 +247,34 @@ export default class CacheAPIService {
           .then((buffer) => wadouri.fileManager.add(new Blob([buffer])))
           .then((fileUri) => {
             this.imageIdToFileUriMap.set(url, fileUri);
+            displaySet.instances[0].url = displaySet.instance.url = url;
             displaySet.instance.imageId = fileUri;
             displaySet.instance.getImageId = () => fileUri;
           });
       }
+    });
+
+    await Promise.all(promises);
+  }
+
+  public async cacheFiles(fileUrls, forceCache = false) {
+    const { userAuthenticationService } = this.servicesManager.services;
+    const headers = userAuthenticationService.getAuthorizationHeader();
+
+    const promises = fileUrls.map((url) => {
+      const { url: parsedUrl } = wadouri.parseImageId(url);
+
+      if (!forceCache && this.imageIdToFileUriMap.get(url)) {
+        return;
+      }
+
+      return fetch(parsedUrl, { headers })
+        .then((response) => response.arrayBuffer())
+        .then((buffer) => wadouri.fileManager.add(new Blob([buffer])))
+        .then((fileUri) => {
+          this.imageIdToFileUriMap.set(url, fileUri);
+        })
+        .catch((error) => console.warn(error));
     });
 
     await Promise.all(promises);
@@ -288,5 +337,7 @@ export default class CacheAPIService {
       'CORNERSTONE_CACHE_QUOTA_EXCEEDED_ERROR',
       this.handleQuotaExceededWriteError
     );
+
+    this.imageIdToFileUriMap = new Map();
   }
 }
