@@ -1,4 +1,4 @@
-import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
+import { DicomMetadataStore, pubSubServiceInterface, utils } from '@ohif/core';
 import { internal, wadouri } from '@cornerstonejs/dicom-image-loader';
 const { getOptions } = internal;
 import _ from 'lodash';
@@ -136,9 +136,7 @@ export default class CacheAPIService {
       .filter(
         (serie) => !segSOPClassUIDs.includes(serie.instances[0].SOPClassUID)
       )
-      .flatMap((serie) =>
-        serie.instances.flatMap((instance) => instance.imageId)
-      );
+      .flatMap((serie) => utils.getImageIdsFromInstances(serie.instances));
     await Promise.all([
       this.cacheImageIds(imageIds),
       this.cacheSegFiles(StudyInstanceUID),

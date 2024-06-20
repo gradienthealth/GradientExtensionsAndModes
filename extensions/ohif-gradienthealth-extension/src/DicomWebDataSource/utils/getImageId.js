@@ -34,8 +34,12 @@ export default function getImageId({
     return;
   }
 
-  if (instance.url) {
-    return instance.url;
+  const url = instance.url;
+  if (url) {
+    if (frame !== undefined) {
+      return url + '&frame=' + (frame + 1);
+    }
+    return url;
   }
 
   const renderingAttr = thumbnail ? 'thumbnailRendering' : 'imageRendering';

@@ -182,15 +182,13 @@ export default class CropDisplayAreaService {
     }
 
   public async focusToSegment(segmentationId, segmentIndex) {
-    const {
-      segmentationService,
-      viewportGridService,
-      cornerstoneViewportService,
-      displaySetService,
-    } = this.serviceManager.services;
+    const { segmentationService, displaySetService } =
+      this.serviceManager.services;
 
     const segmentation = segmentationService.getSegmentation(segmentationId);
-    const segDisplayset = displaySetService.getDisplaySetByUID(segmentation.displaySetInstanceUID);
+    const segDisplayset = displaySetService.getDisplaySetByUID(
+      segmentation.displaySetInstanceUID
+    );
     if (segDisplayset.Modality !== 'SEG') {
       return;
     }
@@ -200,33 +198,177 @@ export default class CropDisplayAreaService {
 
     segmentIndex = segmentIndex || segmentation.activeSegmentIndex;
 
-    let dimensions, pixelData;
-
     if (imageIdReferenceMap) {
-      const image = cache.getImage(imageIdReferenceMap.values().next().value);
-      const { rows, columns } = image;
-      dimensions = [columns, rows, imageIdReferenceMap.size];
-      pixelData = image.getPixelData();
+      await this.focusToSegmentInStack(
+        segmentIndex,
+        segDisplayset,
+        imageIdReferenceMap
+      );
     } else {
-      const volume = cache.getVolume(segmentationId);
-      ({ dimensions } = volume);
-      pixelData = volume.scalarData;
+      await this.focusToSegmentVolume(
+        segmentIndex,
+        segDisplayset,
+        segmentationId
+      );
     }
 
-    const mask = tf.tidy(() => {
-      let tensor;
-      if (imageIdReferenceMap) {
-        tensor = tf.tensor2d(new Float32Array(pixelData), [
+    segmentationService.highlightSegment(segmentationId, segmentIndex);
+  }
+
+  focusToSegmentInStack = async (
+    segmentIndex,
+    segDisplaySet,
+    imageIdReferenceMap
+  ) => {
+    const {
+      viewportGridService,
+      cornerstoneViewportService,
+      displaySetService,
+    } = this.serviceManager.services;
+
+    const firstImage = cache.getImage(
+      imageIdReferenceMap.values().next().value
+    );
+    const { rows, columns } = firstImage;
+    const dimensions = [columns, rows, imageIdReferenceMap.size];
+
+    const framesWithSegment: any[] = [];
+
+    for (const [index, segImageId] of imageIdReferenceMap.values()) {
+      const image = cache.getImage(segImageId);
+      const pixelData = image.getPixelData();
+
+      const mask = tf.tidy(() => {
+        const tensor = tf.tensor2d(new Float32Array(pixelData), [
           dimensions[1],
           dimensions[0],
         ]);
-      } else {
-        tensor = tf.tensor3d(new Float32Array(pixelData), [
-          dimensions[2],
-          dimensions[0],
-          dimensions[1],
-        ]);
+
+        return tensor.equal(segmentIndex); // get boolean
+      });
+
+      const hasSegment = mask.dataSync().some(Boolean);
+
+      if (hasSegment) {
+        framesWithSegment.push({ mask, index });
       }
+
+      tf.dispose(hasSegment);
+    }
+
+    const segmentBounds = {
+      left: dimensions[0] - 1,
+      top: dimensions[1] - 1,
+      right: 0,
+      bottom: 0,
+    };
+    let densestFrame = { index: 0, area: 0 };
+
+    for (let i = 0; i < framesWithSegment.length; i++) {
+      const mask = framesWithSegment[i].mask;
+
+      const maskCoordinates = await tf.whereAsync(mask);
+
+      const { xMax, yMax, xMin, yMin } = tf.tidy(() => {
+        const transpose = tf.einsum('ij->ji', maskCoordinates);
+        tf.dispose(mask);
+        tf.dispose(maskCoordinates);
+
+        let xMin = 0,
+          xMax = dimensions[0],
+          yMin = 0,
+          yMax = dimensions[1];
+
+        if (transpose.size !== 0) {
+          xMin = transpose.gather(1).min().dataSync()[0];
+          xMax = transpose.gather(1).max().dataSync()[0];
+          yMin = transpose.gather(0).min().dataSync()[0];
+          yMax = transpose.gather(0).max().dataSync()[0];
+        }
+
+        return { xMax, yMax, xMin, yMin };
+      });
+
+      const area = (xMax + 1 - xMin) * (yMax + 1 - yMin);
+      if (area > densestFrame.area) {
+        densestFrame = {
+          area,
+          index: framesWithSegment[i].index,
+        };
+      }
+
+      segmentBounds.left = Math.min(segmentBounds.left, xMin);
+      segmentBounds.right = Math.max(segmentBounds.right, xMax);
+      segmentBounds.top = Math.min(segmentBounds.top, yMin);
+      segmentBounds.bottom = Math.max(segmentBounds.bottom, yMax);
+    }
+
+    const { activeViewportId } = viewportGridService.getState();
+    const viewportsWithSegmentation = getViewportsWithSegmentation(
+      segDisplaySet,
+      this.serviceManager
+    );
+
+    let bboxWidth = Math.abs(segmentBounds.right + 1 - segmentBounds.left);
+    let bboxHeight = Math.abs(segmentBounds.bottom + 1 - segmentBounds.top);
+    let width = dimensions[0];
+    let height = dimensions[1];
+    const imageAspectRatio = width / height;
+
+    const imagePoint = [
+      (segmentBounds.right + segmentBounds.left) / (2 * width),
+      (segmentBounds.bottom + segmentBounds.top) / (2 * height),
+    ] as [number, number];
+    const zoomFactors = {
+      x: bboxWidth / width,
+      y: bboxHeight / height,
+    };
+
+    viewportsWithSegmentation.forEach((viewport) => {
+      viewport.scroll(densestFrame.index - viewport.getTargetImageIdIndex());
+
+      const canvasAspectRatio = viewport.sWidth / viewport.sHeight;
+      const zoomFactorsCopy = { ...zoomFactors };
+      correctZoomFactors(zoomFactorsCopy, imageAspectRatio, canvasAspectRatio);
+
+      setDisplayArea(viewport, zoomFactorsCopy, imagePoint);
+    });
+
+    if (!viewportsWithSegmentation.length) {
+      const activeViewport =
+        cornerstoneViewportService.getCornerstoneViewport(activeViewportId);
+
+      handleFocusingForNewImage(
+        activeViewport,
+        displaySetService,
+        zoomFactors,
+        imagePoint,
+        imageAspectRatio
+      );
+    }
+  };
+
+  focusToSegmentVolume = async (
+    segmentIndex,
+    segDisplaySet,
+    segmentationId
+  ) => {
+    const {
+      viewportGridService,
+      cornerstoneViewportService,
+      displaySetService,
+    } = this.serviceManager.services;
+
+    const volume = cache.getVolume(segmentationId);
+    const { dimensions } = volume;
+    const pixelData = volume.scalarData;
+
+    const mask = tf.tidy(() => {
+      const tensor = tf.tensor3d(new Float32Array(pixelData), [
+        dimensions[2],
+        dimensions[0],
+        dimensions[1],
+      ]);
 
       return tensor.equal(segmentIndex); // get boolean
     });
@@ -244,32 +386,20 @@ export default class CropDisplayAreaService {
         yMax = dimensions[1];
 
       if (transpose.size !== 0) {
-        if (imageIdReferenceMap) {
-          xMin = transpose.gather(1).min().dataSync()[0];
-          xMax = transpose.gather(1).max().dataSync()[0];
-          yMin = transpose.gather(0).min().dataSync()[0];
-          yMax = transpose.gather(0).max().dataSync()[0];
-        } else {
-          xMin = transpose.gather(2).min().dataSync()[0];
-          xMax = transpose.gather(2).max().dataSync()[0];
-          yMin = transpose.gather(1).min().dataSync()[0];
-          yMax = transpose.gather(1).max().dataSync()[0];
-        }
+        xMin = transpose.gather(2).min().dataSync()[0];
+        xMax = transpose.gather(2).max().dataSync()[0];
+        yMin = transpose.gather(1).min().dataSync()[0];
+        yMax = transpose.gather(1).max().dataSync()[0];
       }
 
       return { xMax, yMax, xMin, yMin };
     });
 
-    const referencedDisplaySetInstanceUID = segDisplayset.referencedDisplaySetInstanceUID;
-    const { viewports, activeViewportId } = viewportGridService.getState();
-    const viewportsWithSegmentation: IStackViewport | IVolumeViewport = [];
-    viewports.forEach((viewport) => {
-      if (viewport.displaySetInstanceUIDs.includes(referencedDisplaySetInstanceUID)) {
-        viewportsWithSegmentation.push(
-          cornerstoneViewportService.getCornerstoneViewport(viewport.viewportId)
-        );
-      }
-    });
+    const { activeViewportId } = viewportGridService.getState();
+    const viewportsWithSegmentation = getViewportsWithSegmentation(
+      segDisplaySet,
+      this.serviceManager
+    );
 
     let bboxWidth = xMax + 1 - xMin;
     let bboxHeight = yMax + 1 - yMin;
@@ -298,7 +428,7 @@ export default class CropDisplayAreaService {
       const activeViewport =
         cornerstoneViewportService.getCornerstoneViewport(activeViewportId);
 
-      handleFocusingForNewStack(
+      handleFocusingForNewImage(
         activeViewport,
         displaySetService,
         zoomFactors,
@@ -306,7 +436,7 @@ export default class CropDisplayAreaService {
         imageAspectRatio
       );
     }
-  }
+  };
 }
 
 const setDisplayArea = (
@@ -321,7 +451,7 @@ const setDisplayArea = (
   viewport.render();
 };
 
-const handleFocusingForNewStack = (
+const handleFocusingForNewImage = (
   viewport: IStackViewport | IVolumeViewport,
   displaySetService: any,
   zoomFactors: { x: number; y: number },
@@ -391,4 +521,25 @@ const correctZoomFactors = (
 
   zoomFactors.x /= zoomOutPercentatage / 100;
   zoomFactors.y /= zoomOutPercentatage / 100;
+};
+
+const getViewportsWithSegmentation = (segDisplaySet, servicesManager) => {
+  const { viewportGridService, cornerstoneViewportService } =
+    servicesManager.services;
+  const referencedDisplaySetInstanceUID =
+    segDisplaySet.referencedDisplaySetInstanceUID;
+  const { viewports } = viewportGridService.getState();
+  const viewportsWithSegmentation: IStackViewport[] | IVolumeViewport[] = [];
+
+  viewports.forEach((viewport) => {
+    if (
+      viewport.displaySetInstanceUIDs.includes(referencedDisplaySetInstanceUID)
+    ) {
+      viewportsWithSegmentation.push(
+        cornerstoneViewportService.getCornerstoneViewport(viewport.viewportId)
+      );
+    }
+  });
+
+  return viewportsWithSegmentation;
 };

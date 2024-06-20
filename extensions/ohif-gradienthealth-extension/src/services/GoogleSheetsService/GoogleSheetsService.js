@@ -1,6 +1,6 @@
 import { eventTarget, Enums, cache } from '@cornerstonejs/core';
 import { utilities as csToolsUtils } from '@cornerstonejs/tools';
-import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
+import { DicomMetadataStore, pubSubServiceInterface, utils } from '@ohif/core';
 import { alphabet } from './utils';
 
 const MAX_ROWS = 100000;
@@ -375,7 +375,7 @@ function loadSegFiles(serviceManager) {
         ds.StudyInstanceUID === studyInstanceUID &&
         !segSOPClassUIDs.includes(ds.SOPClassUID)
     )
-    .flatMap((ds) => ds.images.flatMap((image) => image.imageId));
+    .flatMap((ds) => utils.getImageIdsFromInstances(ds.instances));
 
   const isAllSegmentationsLoaded = isAllSegmentationsOfSeriesLoaded(
     activeStudySegDisplaySets,
