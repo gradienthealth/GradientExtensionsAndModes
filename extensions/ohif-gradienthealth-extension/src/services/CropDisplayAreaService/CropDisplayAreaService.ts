@@ -47,12 +47,6 @@ export default class CropDisplayAreaService {
     const viewport = enabledElement?.viewport;
     if (!viewport) return;
 
-    const { voiRange, invert } = (viewport as IStackViewport).getProperties();
-    const cutoff = invert ? voiRange?.upper : voiRange?.lower;
-    if (cutoff === undefined || cutoff === null) {
-      return;
-    }
-
     const viewportInfo =
         cornerstoneViewportService.getViewportInfo(viewportId);
     const matchedDisplaySets = Array.from(
@@ -84,6 +78,7 @@ export default class CropDisplayAreaService {
         dimensions[1],
         dimensions[0],
       ]);
+      const cutoff = tensor.max().dataSync()[0] * 0.2; // 20% of max pixel value
       const mask = tensor.greater(cutoff); // get boolean
       const widthBool = mask.any(0); // height?
       const heightBool = mask.any(1); // width?
