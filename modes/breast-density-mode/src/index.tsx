@@ -1,5 +1,6 @@
 import hotkeys from './hotkeyBindings.js';
 import toolbarButtons from './toolbarButtons.js';
+import moreTools from './moreTools.ts';
 import { id } from './id.js';
 import initToolGroups from './initToolGroups.js';
 
@@ -46,6 +47,7 @@ const extensionDependencies = {
 };
 
 function modeFactory({ modeConfiguration }) {
+  let _activatePanelTriggersSubscriptions = [];
   return {
     // TODO: We're using this as a route segment
     // We should not be.
@@ -57,53 +59,24 @@ function modeFactory({ modeConfiguration }) {
      */
     onModeEnter: ({ servicesManager, extensionManager, commandsManager }) => {
       const { 
-        ToolBarService, 
-        ToolGroupService, 
+        toolbarService, 
+        toolGroupService, 
         GoogleSheetsService, 
         CropDisplayAreaService,
         CacheAPIService,
+        measurementService
       } = servicesManager.services;
+
+      measurementService.clearMeasurements();
+
+      // Init Default and SR ToolGroups
+      initToolGroups(extensionManager, toolGroupService, commandsManager);
 
       GoogleSheetsService.init();
       CropDisplayAreaService.init();
       CacheAPIService.init();
-
-      // Init Default and SR ToolGroups
-      initToolGroups(extensionManager, ToolGroupService, commandsManager);
-
-      let unsubscribe;
-
-      const activateTool = () => {
-        ToolBarService.recordInteraction({
-          groupId: 'WindowLevel',
-          itemId: 'WindowLevel',
-          interactionType: 'tool',
-          commands: [
-            {
-              commandName: 'setToolActive',
-              commandOptions: {
-                toolName: 'WindowLevel',
-              },
-              context: 'CORNERSTONE',
-            },
-          ],
-        });
-
-        // We don't need to reset the active tool whenever a viewport is getting
-        // added to the toolGroup.
-        unsubscribe();
-      };
-
-      // Since we only have one viewport for the basic cs3d mode and it has
-      // only one hanging protocol, we can just use the first viewport
-      ({ unsubscribe } = ToolGroupService.subscribe(
-        ToolGroupService.EVENTS.VIEWPORT_ADDED,
-        activateTool
-      ));
-
-      ToolBarService.init(extensionManager);
-      ToolBarService.addButtons(toolbarButtons);
-      ToolBarService.createButtonSection('primary', [
+      toolbarService.addButtons([...toolbarButtons, ...moreTools]);
+      toolbarService.createButtonSection('primary', [
         'Zoom',
         'WindowLevel',
         'Pan',
@@ -113,21 +86,29 @@ function modeFactory({ modeConfiguration }) {
     },
     onModeExit: ({ servicesManager }) => {
       const {
-        ToolGroupService,
+        toolGroupService,
         SyncGroupService,
-        MeasurementService,
-        ToolBarService,
+        measurementService,
+        toolbarService,
         GoogleSheetsService,
         CacheAPIService,
-        CornerstoneViewportService,
+        cornerstoneViewportService,
+        uiDialogService,
+        uiModalService,
       } = servicesManager.services;
-      ToolBarService.reset();
-      MeasurementService.clearMeasurements();
-      ToolGroupService.destroy();
+
+      _activatePanelTriggersSubscriptions.forEach(sub => sub.unsubscribe());
+      _activatePanelTriggersSubscriptions = [];
+
+      uiDialogService.dismissAll();
+      uiModalService.hide();
+      toolbarService.reset();
+      measurementService.clearMeasurements();
+      toolGroupService.destroy();
       SyncGroupService.destroy();
       GoogleSheetsService.destroy();
       CacheAPIService.destroy();
-      CornerstoneViewportService.destroy();
+      cornerstoneViewportService.destroy();
     },
     validationTags: {
       study: [],
@@ -137,7 +118,11 @@ function modeFactory({ modeConfiguration }) {
       const modalities_list = modalities.split('\\');
 
       // Slide Microscopy modality not supported by basic mode yet
-      return !modalities_list.includes('SM');
+      return {
+        valid: !modalities_list.includes('SM'),
+        description:
+          'The mode does not support studies that ONLY include the following modalities: SM',
+      };
     },
     routes: [
       {
@@ -150,8 +135,8 @@ function modeFactory({ modeConfiguration }) {
             props: {
               leftPanels: [gradienthealth.thumbnailList],
               rightPanels: rightPanels,
-              leftPanelDefaultClosed: true,
-              rightPanelDefaultClosed: false,
+              leftPanelClosed: true,
+              rightPanelClosed: false,
               viewports: [
                 {
                   namespace: gradienthealth.viewport,
@@ -188,6 +173,7 @@ function modeFactory({ modeConfiguration }) {
       dicomsr.sopClassHandler,
     ],
     hotkeys: [...hotkeys],
+    ...modeConfiguration
   };
 }
 
@@ -198,3 +184,4 @@ const mode = {
 };
 
 export default mode;
+export { initToolGroups, moreTools, toolbarButtons };

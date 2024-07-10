@@ -1,11 +1,11 @@
 function requestDisplaySetCreationForStudy(
   dataSource,
-  DisplaySetService,
+  displaySetService,
   StudyInstanceUID: string,
   madeInClient: boolean
 ) {
   if (
-    DisplaySetService.activeDisplaySets.some(
+    displaySetService.activeDisplaySets.some(
       (displaySet) => displaySet.StudyInstanceUID === StudyInstanceUID
     )
   ) {

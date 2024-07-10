@@ -1,5 +1,6 @@
 import { hotkeys } from '@ohif/core';
 import toolbarButtons from './toolbarButtons.js';
+import moreTools from './moreTools.ts';
 import { id } from './id.js';
 import initToolGroups from './initToolGroups.js';
 
@@ -56,7 +57,7 @@ const extensionDependencies = {
   '@ohif/extension-dicom-video': '^3.0.1',
 };
 
-function modeFactory() {
+function modeFactory({ modeConfiguration }) {
   let _activatePanelTriggersSubscriptions = [];
   return {
     // TODO: We're using this as a route segment
@@ -72,47 +73,14 @@ function modeFactory() {
         measurementService,
         toolbarService,
         toolGroupService,
-        panelService,
-        segmentationService,
       } = servicesManager.services;
 
       measurementService.clearMeasurements();
 
       // Init Default and SR ToolGroups
-      initToolGroups(extensionManager, toolGroupService, commandsManager);
+      initToolGroups(extensionManager, toolGroupService, commandsManager, this.labelConfig);
 
-      let unsubscribe;
-
-      const activateTool = () => {
-        toolbarService.recordInteraction({
-          groupId: 'WindowLevel',
-          itemId: 'WindowLevel',
-          interactionType: 'tool',
-          commands: [
-            {
-              commandName: 'setToolActive',
-              commandOptions: {
-                toolName: 'WindowLevel',
-              },
-              context: 'CORNERSTONE',
-            },
-          ],
-        });
-
-        // We don't need to reset the active tool whenever a viewport is getting
-        // added to the toolGroup.
-        unsubscribe();
-      };
-
-      // Since we only have one viewport for the basic cs3d mode and it has
-      // only one hanging protocol, we can just use the first viewport
-      ({ unsubscribe } = toolGroupService.subscribe(
-        toolGroupService.EVENTS.VIEWPORT_ADDED,
-        activateTool
-      ));
-
-      toolbarService.init(extensionManager);
-      toolbarService.addButtons(toolbarButtons);
+      toolbarService.addButtons([...toolbarButtons, ...moreTools]);
       toolbarService.createButtonSection('primary', [
         'MeasurementTools',
         'Zoom',
@@ -132,12 +100,17 @@ function modeFactory() {
         toolbarService,
         segmentationService,
         cornerstoneViewportService,
+        uiDialogService,
+        uiModalService,
       } = servicesManager.services;
 
       _activatePanelTriggersSubscriptions.forEach(sub => sub.unsubscribe());
       _activatePanelTriggersSubscriptions = [];
 
+      uiDialogService.dismissAll();
+      uiModalService.hide();
       toolGroupService.destroy();
+      toolbarService.reset();
       syncGroupService.destroy();
       segmentationService.destroy();
       cornerstoneViewportService.destroy();
@@ -151,9 +124,13 @@ function modeFactory() {
       const modalities_list = modalities.split('\\');
 
       // Exclude non-image modalities
-      return !!modalities_list.filter(
-        modality => NON_IMAGE_MODALITIES.indexOf(modality) === -1
-      ).length;
+      return {
+        valid: !!modalities_list.filter(
+          (modality) => NON_IMAGE_MODALITIES.indexOf(modality) === -1
+        ).length,
+        description:
+          'The mode does not support studies that ONLY include the following modalities: SM, ECG, SR, SEG, RTSTRUCT',
+      };
     },
     routes: [
       {
@@ -167,7 +144,7 @@ function modeFactory() {
             props: {
               leftPanels: [tracked.thumbnailList],
               rightPanels: [],
-              rightPanelDefaultClosed: true,
+              rightPanelClosed: true,
               viewports: [
                 {
                   namespace: tracked.viewport,
@@ -210,6 +187,7 @@ function modeFactory() {
       dicomsr.sopClassHandler,
     ],
     hotkeys: [...hotkeys.defaults.hotkeyBindings],
+    ...modeConfiguration
   };
 }
 
@@ -220,3 +198,4 @@ const mode = {
 };
 
 export default mode;
+export { initToolGroups, moreTools, toolbarButtons };

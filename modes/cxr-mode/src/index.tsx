@@ -1,5 +1,7 @@
 import hotkeys from './hotkeyBindings.js';
+import i18n from 'i18next';
 import toolbarButtons from './toolbarButtons.js';
+import moreTools from './moreTools.js';
 import { id } from './id.js';
 import initToolGroups from './initToolGroups.js';
 import { DicomMetadataStore } from '@ohif/core';
@@ -47,10 +49,8 @@ async function customRouteInit({
   studyInstanceUIDs,
   dataSource,
 }) {
-  const {
-    DisplaySetService,
-    HangingProtocolService,
-  } = servicesManager.services;
+  const { displaySetService, hangingProtocolService } =
+    servicesManager.services;
 
   const unsubscriptions = [];
   const {
@@ -62,11 +62,11 @@ async function customRouteInit({
         StudyInstanceUID,
         SeriesInstanceUID
       );
-      DisplaySetService.makeDisplaySets(seriesMetadata.instances, madeInClient);
+      displaySetService.makeDisplaySets(seriesMetadata.instances, madeInClient);
 
       const studyMetadata = DicomMetadataStore.getStudy(StudyInstanceUID);
       if (!madeInClient) {
-        HangingProtocolService.run(studyMetadata);
+        hangingProtocolService.run(studyMetadata);
       }
     }
   );
@@ -91,53 +91,29 @@ const extensionDependencies = {
 };
 
 function modeFactory({ modeConfiguration }) {
+  let _activatePanelTriggersSubscriptions = [];
   return {
     // TODO: We're using this as a route segment
     // We should not be.
     id,
     routeName: 'ngt_contour',
-    displayName: 'Nasogastric Tube Contour',
+    displayName: i18n.t('Nasogastric Tube Contour'),
     onModeEnter: ({ servicesManager, extensionManager, commandsManager }) => {
-      const { ToolBarService, ToolGroupService, GoogleSheetsService } = servicesManager.services;
+      const {
+        toolbarService,
+        toolGroupService,
+        GoogleSheetsService,
+        measurementService,
+      } = servicesManager.services;
 
-      GoogleSheetsService.init();
+      measurementService.clearMeasurements();
 
       // Init Default and SR ToolGroups
-      initToolGroups(extensionManager, ToolGroupService, commandsManager);
-
-      let unsubscribe;
-
-      const activateTool = () => {
-        ToolBarService.recordInteraction({
-          groupId: 'WindowLevel',
-          itemId: 'WindowLevel',
-          interactionType: 'tool',
-          commands: [
-            {
-              commandName: 'setToolActive',
-              commandOptions: {
-                toolName: 'WindowLevel',
-              },
-              context: 'CORNERSTONE',
-            },
-          ],
-        });
-
-        // We don't need to reset the active tool whenever a viewport is getting
-        // added to the toolGroup.
-        unsubscribe();
-      };
-
-      // Since we only have one viewport for the basic cs3d mode and it has
-      // only one hanging protocol, we can just use the first viewport
-      ({ unsubscribe } = ToolGroupService.subscribe(
-        ToolGroupService.EVENTS.VIEWPORT_ADDED,
-        activateTool
-      ));
-
-      ToolBarService.init(extensionManager);
-      ToolBarService.addButtons(toolbarButtons);
-      ToolBarService.createButtonSection('primary', [
+      initToolGroups(extensionManager, toolGroupService, commandsManager, this.labelConfig);
+      
+      GoogleSheetsService.init();
+      toolbarService.addButtons([...toolbarButtons, ...moreTools]);
+      toolbarService.createButtonSection('primary', [
         'MeasurementTools',
         'Zoom',
         'WindowLevel',
@@ -148,16 +124,25 @@ function modeFactory({ modeConfiguration }) {
     },
     onModeExit: ({ servicesManager }) => {
       const {
-        ToolGroupService,
-        SyncGroupService,
-        MeasurementService,
-        ToolBarService,
+        toolGroupService,
+        syncGroupService,
+        measurementService,
+        toolbarService,
+        cornerstoneViewportService,
+        uiDialogService,
+        uiModalService,
       } = servicesManager.services;
 
-      ToolBarService.reset();
-      MeasurementService.clearMeasurements();
-      ToolGroupService.destroy();
-      SyncGroupService.destroy();
+      _activatePanelTriggersSubscriptions.forEach(sub => sub.unsubscribe());
+      _activatePanelTriggersSubscriptions = [];
+
+      uiDialogService.dismissAll();
+      uiModalService.hide();
+      toolbarService.reset();
+      measurementService.clearMeasurements();
+      toolGroupService.destroy();
+      syncGroupService.destroy();
+      cornerstoneViewportService.destroy();
     },
     validationTags: {
       study: [],
@@ -167,7 +152,11 @@ function modeFactory({ modeConfiguration }) {
       const modalities_list = modalities.split('\\');
 
       // Slide Microscopy modality not supported by basic mode yet
-      return !modalities_list.includes('SM');
+      return {
+        valid: !modalities_list.includes('SM'),
+        description:
+          'The mode does not support studies that ONLY include the following modalities: SM',
+      };
     },
     routes: [
       {
@@ -215,6 +204,7 @@ function modeFactory({ modeConfiguration }) {
       dicomsr.sopClassHandler,
     ],
     hotkeys: [...hotkeys],
+    ...modeConfiguration
   };
 }
 
@@ -225,3 +215,4 @@ const mode = {
 };
 
 export default mode;
+export { initToolGroups, moreTools, toolbarButtons };

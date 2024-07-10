@@ -1,7 +1,9 @@
 function initDefaultToolGroup(
   extensionManager,
-  ToolGroupService,
-  commandsManager
+  toolGroupService,
+  commandsManager,
+  toolGroupId,
+  modeLabelConfig
 ) {
   const utilityModule = extensionManager.getModuleEntry(
     '@ohif/extension-cornerstone.utilityModule.tools'
@@ -28,44 +30,56 @@ function initDefaultToolGroup(
     passive: [
       { toolName: toolNames.PlanarFreehandROI },
       { toolName: toolNames.Length },
-      { toolName: toolNames.ArrowAnnotate },
+      {
+        toolName: toolNames.ArrowAnnotate,
+        configuration: {
+          getTextCallback: (callback, eventDetails) => {
+            if (modeLabelConfig) {
+              callback(' ');
+            } else {
+              commandsManager.runCommand('arrowTextCallback', {
+                callback,
+                eventDetails,
+              });
+            }
+          },
+          changeTextCallback: (data, eventDetails, callback) => {
+            if (modeLabelConfig === undefined) {
+              commandsManager.runCommand('arrowTextCallback', {
+                callback,
+                data,
+                eventDetails,
+              });
+            }
+          },
+        },
+      },
       { toolName: toolNames.Bidirectional },
       { toolName: toolNames.DragProbe },
+      { toolName: toolNames.Probe },
       { toolName: toolNames.EllipticalROI },
+      { toolName: toolNames.CircleROI },
       { toolName: toolNames.RectangleROI },
       { toolName: toolNames.StackScroll },
       { toolName: toolNames.Angle },
+      { toolName: toolNames.CobbAngle },
       { toolName: toolNames.Magnify },
+      { toolName: toolNames.SegmentationDisplay },
+      { toolName: toolNames.CalibrationLine },
     ],
-    // enabled
-    // disabled
   };
 
-  const toolsConfig = {
-    [toolNames.ArrowAnnotate]: {
-      getTextCallback: (callback, eventDetails) =>
-        commandsManager.runCommand('arrowTextCallback', {
-          callback,
-          eventDetails,
-        }),
-
-      changeTextCallback: (data, eventDetails, callback) =>
-        commandsManager.runCommand('arrowTextCallback', {
-          callback,
-          data,
-          eventDetails,
-        }),
-    },
-  };
-
-  const toolGroupId = 'default';
-  ToolGroupService.createToolGroupAndAddTools(toolGroupId, tools, toolsConfig);
+  toolGroupService.createToolGroupAndAddTools(toolGroupId, tools);
 }
 
-function initSRToolGroup(extensionManager, ToolGroupService, commandsManager) {
+function initSRToolGroup(extensionManager, toolGroupService, commandsManager) {
   const SRUtilityModule = extensionManager.getModuleEntry(
     '@ohif/extension-cornerstone-dicom-sr.utilityModule.tools'
   );
+
+  if (!SRUtilityModule) {
+    return;
+  }
 
   const CS3DUtilityModule = extensionManager.getModuleEntry(
     '@ohif/extension-cornerstone.utilityModule.tools'
@@ -109,6 +123,9 @@ function initSRToolGroup(extensionManager, ToolGroupService, commandsManager) {
       { toolName: SRToolNames.SRArrowAnnotate },
       { toolName: SRToolNames.SRBidirectional },
       { toolName: SRToolNames.SREllipticalROI },
+      { toolName: SRToolNames.SRCircleROI },
+      { toolName: SRToolNames.SRPlanarFreehandROI },
+      { toolName: SRToolNames.SRRectangleROI },
     ],
     enabled: [
       {
@@ -119,30 +136,19 @@ function initSRToolGroup(extensionManager, ToolGroupService, commandsManager) {
     // disabled
   };
 
-  const toolsConfig = {
-    [toolNames.ArrowAnnotate]: {
-      getTextCallback: (callback, eventDetails) =>
-        commandsManager.runCommand('arrowTextCallback', {
-          callback,
-          eventDetails,
-        }),
-
-      changeTextCallback: (data, eventDetails, callback) =>
-        commandsManager.runCommand('arrowTextCallback', {
-          callback,
-          data,
-          eventDetails,
-        }),
-    },
-  };
-
   const toolGroupId = 'SRToolGroup';
-  ToolGroupService.createToolGroupAndAddTools(toolGroupId, tools, toolsConfig);
+  toolGroupService.createToolGroupAndAddTools(toolGroupId, tools);
 }
 
-function initToolGroups(extensionManager, ToolGroupService, commandsManager) {
-  initDefaultToolGroup(extensionManager, ToolGroupService, commandsManager);
-  initSRToolGroup(extensionManager, ToolGroupService, commandsManager);
+function initToolGroups(extensionManager, toolGroupService, commandsManager, modeLabelConfig) {
+  initDefaultToolGroup(
+    extensionManager,
+    toolGroupService,
+    commandsManager,
+    'default',
+    modeLabelConfig
+  );
+  initSRToolGroup(extensionManager, toolGroupService, commandsManager);
 }
 
 export default initToolGroups;

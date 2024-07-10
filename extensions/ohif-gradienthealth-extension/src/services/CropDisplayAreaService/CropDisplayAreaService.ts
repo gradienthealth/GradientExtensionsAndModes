@@ -295,15 +295,12 @@ export default class CropDisplayAreaService {
     });
 
     if (!viewportsWithSegmentation.length) {
-      const activeViewport =
-        cornerstoneViewportService.getCornerstoneViewport(activeViewportId);
-
       handleFocusingForNewStack(
-        activeViewport,
         displaySetService,
         zoomFactors,
         imagePoint,
-        imageAspectRatio
+        imageAspectRatio,
+        cornerstoneViewportService
       );
     }
   }
@@ -322,53 +319,67 @@ const setDisplayArea = (
 };
 
 const handleFocusingForNewStack = (
-  viewport: IStackViewport | IVolumeViewport,
   displaySetService: any,
   zoomFactors: { x: number; y: number },
   imagePoint: [number, number],
-  imageAspectRatio: number
+  imageAspectRatio: number,
+  cornerstoneViewportService
 ) => {
-  const canvasAspectRatio = viewport.sWidth / viewport.sHeight;
-
-  const eventElement =
+  
+  const elementEnabledListener = (evt) => {
+    const viewport = cornerstoneViewportService.getCornerstoneViewport(evt.detail.viewportId) 
+    const eventElement =
     viewport.type === CSCORE_ENUMS.ViewportType.STACK
-      ? CornerstoneEventTarget
-      : viewport.element;
-  const eventName =
+    ? CornerstoneEventTarget
+    : viewport.element;
+    const eventName =
     viewport.type === CSCORE_ENUMS.ViewportType.STACK
-      ? CS_EVENTS.STACK_VIEWPORT_NEW_STACK
-      : CS_EVENTS.VOLUME_VIEWPORT_NEW_VOLUME;
+    ? CS_EVENTS.STACK_VIEWPORT_NEW_STACK
+    : CS_EVENTS.VOLUME_VIEWPORT_NEW_VOLUME;
 
-  const newImageListener = (evt) => {
-    const segDisplaySetsOfLoadedSeries = getSegDisplaysetsOfReferencedImagesIds(
-      evt.detail.imageIds,
-      displaySetService
-    );
-
-    let segmentationsRenderedCount = 0;
-    const segmentationRenderedListener = () => {
-      if (
-        ++segmentationsRenderedCount === segDisplaySetsOfLoadedSeries.length
-      ) {
-        correctZoomFactors(zoomFactors, imageAspectRatio, canvasAspectRatio);
-        setDisplayArea(viewport, zoomFactors, imagePoint);
-
-        CornerstoneEventTarget.removeEventListener(
-          CSTOOLS_ENUMS.Events.SEGMENTATION_RENDERED,
-          segmentationRenderedListener
+    const canvasAspectRatio = viewport.sWidth / viewport.sHeight;
+    
+    const newImageListener = (evt) => {
+      const segDisplaySetsOfLoadedSeries =
+        getSegDisplaysetsOfReferencedImagesIds(
+          evt.detail.imageIds,
+          displaySetService
         );
-      }
+
+      let segmentationsRenderedCount = 0;
+      const segmentationRenderedListener = () => {
+        if (
+          ++segmentationsRenderedCount === segDisplaySetsOfLoadedSeries.length
+        ) {
+          correctZoomFactors(zoomFactors, imageAspectRatio, canvasAspectRatio);
+          setDisplayArea(viewport, zoomFactors, imagePoint);
+
+          CornerstoneEventTarget.removeEventListener(
+            CSTOOLS_ENUMS.Events.SEGMENTATION_RENDERED,
+            segmentationRenderedListener
+          );
+        }
+      };
+
+      CornerstoneEventTarget.addEventListener(
+        CSTOOLS_ENUMS.Events.SEGMENTATION_RENDERED,
+        segmentationRenderedListener
+      );
+
+      eventElement.removeEventListener(eventName, newImageListener);
     };
 
-    CornerstoneEventTarget.addEventListener(
-      CSTOOLS_ENUMS.Events.SEGMENTATION_RENDERED,
-      segmentationRenderedListener
+    eventElement.addEventListener(eventName, newImageListener);
+    CornerstoneEventTarget.removeEventListener(
+      CSCORE_ENUMS.Events.ELEMENT_ENABLED,
+      elementEnabledListener
     );
-
-    eventElement.removeEventListener(eventName, newImageListener);
   };
 
-  eventElement.addEventListener(eventName, newImageListener);
+  CornerstoneEventTarget.addEventListener(
+    CSCORE_ENUMS.Events.ELEMENT_ENABLED,
+    elementEnabledListener
+  );
 };
 
 const correctZoomFactors = (
