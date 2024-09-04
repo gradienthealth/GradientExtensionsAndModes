@@ -1,4 +1,4 @@
-import { eventTarget, Enums, cache } from '@cornerstonejs/core';
+import { eventTarget, Enums, cache, metaData } from '@cornerstonejs/core';
 import { utilities as csToolsUtils } from '@cornerstonejs/tools';
 import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
 import { alphabet } from './utils';
@@ -360,8 +360,14 @@ function loadSegFiles(serviceManager) {
     displaySetService,
     UserAuthenticationService,
     CacheAPIService,
-    viewportGridService
+    viewportGridService,
+    cornerstoneViewportService,
+    customizationService,
   } = serviceManager.services;
+  const utilityModule = extensionManager.getModuleEntry(
+    '@ohif/extension-cornerstone.utilityModule.common'
+  );
+  const { getImageFlips } = utilityModule.exports;
   const headers = UserAuthenticationService.getAuthorizationHeader();
 
   const activeStudySegDisplaySets = displaySetService.getDisplaySetsBy(
@@ -376,6 +382,27 @@ function loadSegFiles(serviceManager) {
         !segSOPClassUIDs.includes(ds.SOPClassUID)
     )
     .flatMap((ds) => ds.images.flatMap((image) => image.imageId));
+
+  const stackImageAddedCallback = (evt) => {
+    const viewport = cornerstoneViewportService.getCornerstoneViewport(
+      evt.detail.viewportId
+    );
+
+    const { criteria: isOrientationCorrectionNeeded } =
+      customizationService.get('orientationCorrectionCriterion');
+    const instance = metaData.get('instance', viewport.getCurrentImageId());
+
+    if (isOrientationCorrectionNeeded?.(instance)) {
+      const { hFlip, vFlip } = getImageFlips(instance);
+      (hFlip || vFlip) &&
+        viewport.setCamera({ flipHorizontal: hFlip, flipVertical: vFlip });
+    }
+
+    eventTarget.removeEventListener(
+      Enums.Events.STACK_VIEWPORT_IMAGES_ADDED,
+      stackImageAddedCallback
+    );
+  };
 
   const isAllSegmentationsLoaded = isAllSegmentationsOfSeriesLoaded(
     activeStudySegDisplaySets,
@@ -417,6 +444,11 @@ function loadSegFiles(serviceManager) {
 
       await Promise.all(loadPromises);
 
+      eventTarget.addEventListener(
+        Enums.Events.STACK_VIEWPORT_IMAGES_ADDED,
+        stackImageAddedCallback
+      );
+
       const addRepresentationPromises = activeStudySegDisplaySets.map(
         async (displaySet) =>
           await segmentationService.addSegmentationRepresentationToToolGroup(
@@ -440,7 +472,7 @@ function loadSegFiles(serviceManager) {
           segmentationsOfLoadedImage[0].displaySetInstanceUID
         );
       });
-      
+
       unsubscribe?.();
     }
   };
@@ -454,7 +486,7 @@ function loadSegFiles(serviceManager) {
     ));
   }
 }
-
+ 
 function isAllSegmentationsOfSeriesLoaded(
   activeStudySegDisplaySets,
   servicesManager
