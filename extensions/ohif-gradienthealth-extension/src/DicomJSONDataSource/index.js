@@ -37,13 +37,23 @@ const getMetaDataByURL = url => {
   return _store.urls.find(metaData => metaData.url === url);
 };
 
-const getInstanceUrl = (url, prefix) => {
-  let modifiedUrl = prefix
-    ? url.replace(
+const getInstanceUrl = (url, prefix, bucket, bucketPrefix) => {
+  let modifiedUrl = url;
+
+  const schemaPresent = !!url.match(/^(dicomweb:|dicomzip:|wadouri:)/)
+  if (!schemaPresent) {
+    const filePath = url.split('studies/')[1];
+    modifiedUrl = `dicomweb:https://storage.googleapis.com/${bucket}/${
+      bucketPrefix ? bucketPrefix + '/' : ''
+    }studies/${filePath}`;
+  }
+
+  modifiedUrl = prefix
+    ? modifiedUrl.replace(
       'https://storage.googleapis.com',
       `https://storage.googleapis.com/${prefix}`
     )
-    : url;
+    : modifiedUrl;
 
   const dicomwebRegex = /^dicomweb:/
   modifiedUrl = modifiedUrl.includes(":zip//")
@@ -53,16 +63,40 @@ const getInstanceUrl = (url, prefix) => {
   return modifiedUrl;
 }
 
+const mergeInstanceProperties = (instance) => {
+  return {
+    ...instance.metadata,
+    ...(instance.headers && {
+      FileOffsets: {
+        startByte: instance.headers.start_byte,
+        endByte: instance.headers.end_byte,
+      },
+    }),
+  };
+};
+
 const getProperty = (serieMetadata, property) => {
   return (
     serieMetadata[property] || serieMetadata.instances[0].metadata[property]
   );
 };
 
-const getMetadataFromRows = (rows, prefix, seriesuidArray) => {
+const getMetadataFromRows = (data, prefix, seriesuidArray) => {
+  const rows = data.flatMap(({ metadata }) => metadata);
+  const bucketMap = data.reduce(
+    (dataMap, { bucket, bucketPrefix, metadata }) => {
+      metadata.forEach(({ instances }) =>
+        instances.forEach(({ url, uri }) => {
+          dataMap[url || uri] = { bucket, bucketPrefix };
+        })
+      );
+      return dataMap;
+    },
+    {}
+  );
   // TODO: bq should not have dups
   let filteredRows = rows.map(row => {
-    row.instances = _.uniqBy(row.instances, (x)=>x.url)
+    row.instances = _.uniqBy(row.instances, (x) => x.url || x.uri);
     return row
   });
 
@@ -99,9 +133,15 @@ const getMetadataFromRows = (rows, prefix, seriesuidArray) => {
           ? 0
           : parseInt(row['NumInstances']),
         instances: row['instances'].map(instance => {
+          const url = instance.url || instance.uri;
           return {
-            metadata: instance.metadata,
-            url: getInstanceUrl(instance.url, prefix),
+            metadata: mergeInstanceProperties(instance),
+            url: getInstanceUrl(
+              url,
+              prefix,
+              bucketMap[url].bucket,
+              bucketMap[url].bucketPrefix
+            ),
           };
         }),
       };
@@ -381,14 +421,20 @@ function createDicomJSONApi(dicomJsonConfig, servicesManager) {
 
       const studyMetadata = [];
       for (let i = 0; i < buckets.length; i++) {
+        const bucket = buckets[i],
+          bucketPrefix = query.get('bucket-prefix') || 'dicomweb';
         const metadataPerBucket = await filesFromStudyInstanceUID({
-          bucketName: buckets[i],
-          prefix: query.get('bucket-prefix') || 'dicomweb',
+          bucketName: bucket,
+          prefix: bucketPrefix,
           studyuids: query.getAll('StudyInstanceUID'),
           headers: UserAuthenticationService.getAuthorizationHeader(),
         });
 
-        studyMetadata.push(...metadataPerBucket);
+        studyMetadata.push({
+          bucket,
+          bucketPrefix,
+          metadata: metadataPerBucket.flatMap(e=>e),
+        });
       }
 
       const data = getMetadataFromRows(
