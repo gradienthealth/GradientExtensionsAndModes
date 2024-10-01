@@ -12,11 +12,16 @@ import getImageId from '../DicomWebDataSource/utils/getImageId';
 import _ from 'lodash';
 
 const metadataProvider = classes.MetadataProvider;
-const { datasetToBlob } = dcmjs.data;
+const { datasetToBlob, DicomMetaDictionary } = dcmjs.data;
 
 const mappings = {
   studyInstanceUid: 'StudyInstanceUID',
   patientId: 'PatientID',
+};
+
+const GH_CUSTOM_TAGS = {
+  CustomOffsetTable: '60011002',
+  CustomOffsetTableLengths: '60011003',
 };
 
 let _store = {
@@ -63,15 +68,25 @@ const getInstanceUrl = (url, prefix, bucket, bucketPrefix) => {
   return modifiedUrl;
 }
 
+const naturalizeMetadata = (metadata) => {
+  return {
+    ...DicomMetaDictionary.naturalizeDataset(metadata),
+    CustomOffsetTable: metadata[GH_CUSTOM_TAGS.CustomOffsetTable]?.Value,
+    CustomOffsetTableLengths:
+      metadata[GH_CUSTOM_TAGS.CustomOffsetTableLengths]?.Value,
+  };
+};
+
 const mergeInstanceProperties = (instance) => {
   return {
     ...instance.metadata,
-    ...(instance.headers && {
-      FileOffsets: {
-        startByte: instance.headers.start_byte,
-        endByte: instance.headers.end_byte,
-      },
-    }),
+    ...(instance.headers.start_byte &&
+      instance.headers.end_byte && {
+        FileOffsets: {
+          startByte: instance.headers.start_byte,
+          endByte: instance.headers.end_byte,
+        },
+      }),
   };
 };
 
@@ -82,7 +97,16 @@ const getProperty = (serieMetadata, property) => {
 };
 
 const getMetadataFromRows = (data, prefix, seriesuidArray) => {
-  const rows = data.flatMap(({ metadata }) => metadata);
+  const rows = data.flatMap(({ metadata }) =>
+    metadata.map((seriesMetadata) => ({
+      ...seriesMetadata,
+      instances: seriesMetadata.instances.map((instance) => ({
+        ...instance,
+        metadata: naturalizeMetadata(instance.metadata),
+        url: instance.url || instance.uri,
+      })),
+    }))
+  );
   const bucketMap = data.reduce(
     (dataMap, { bucket, bucketPrefix, metadata }) => {
       metadata.forEach(({ instances }) =>
@@ -96,7 +120,7 @@ const getMetadataFromRows = (data, prefix, seriesuidArray) => {
   );
   // TODO: bq should not have dups
   let filteredRows = rows.map(row => {
-    row.instances = _.uniqBy(row.instances, (x) => x.url || x.uri);
+    row.instances = _.uniqBy(row.instances, (x)=>x.url)
     return row
   });
 
@@ -108,7 +132,7 @@ const getMetadataFromRows = (data, prefix, seriesuidArray) => {
 
   const rowsByStudy = Object.values(
     filteredRows.reduce((rowsByStudy, row) => {
-      const studyuid = row['StudyInstanceUID'];
+      const studyuid = getProperty(row, 'StudyInstanceUID');
       if (!rowsByStudy[studyuid]) rowsByStudy[studyuid] = [];
       rowsByStudy[studyuid].push(row);
       return rowsByStudy;
@@ -122,18 +146,19 @@ const getMetadataFromRows = (data, prefix, seriesuidArray) => {
 
     const series = rows.map(row => {
       return {
-        SeriesInstanceUID: row['SeriesInstanceUID'],
-        Modality: row['Modality'],
-        SeriesDescription: row['SeriesDescription'] || 'No description',
-        StudyInstanceUID: row['StudyInstanceUID'],
-        SeriesNumber: row['SeriesNumber'],
-        SeriesDate: row['SeriesDate'],
-        SeriesTime: row['SeriesTime'],
-        NumInstances: isNaN(parseInt(row['NumInstances']))
+        SeriesInstanceUID: getProperty(row, 'SeriesInstanceUID'),
+        Modality: getProperty(row, 'Modality'),
+        SeriesDescription:
+          getProperty(row, 'SeriesDescription') || 'No description',
+        StudyInstanceUID: getProperty(row, 'StudyInstanceUID'),
+        SeriesNumber: getProperty(row, 'SeriesNumber'),
+        SeriesDate: getProperty(row, 'SeriesDate'),
+        SeriesTime: getProperty(row, 'SeriesTime'),
+        NumInstances: isNaN(parseInt(getProperty(row, 'NumInstances')))
           ? 0
-          : parseInt(row['NumInstances']),
-        instances: row['instances'].map(instance => {
-          const url = instance.url || instance.uri;
+          : parseInt(getProperty(row, 'NumInstances')),
+        instances: row['instances'].map((instance) => {
+          const url = instance.url;
           return {
             metadata: mergeInstanceProperties(instance),
             url: getInstanceUrl(
@@ -235,7 +260,7 @@ const filesFromStudyInstanceUID = async ({bucketName, prefix, studyuids, headers
     const files = res.items || [];
     const folders = res.prefixes || [];
     const series = folders.map(async (folderPath)=>{
-      const objectName = `${folderPath}metadata`;
+      const objectName = `${folderPath}metadata.json`;
       const apiUrl = `https://storage.googleapis.com/storage/v1/b/${bucketName}/o/${encodeURIComponent(objectName)}?alt=media`;
       const response = await fetch(apiUrl, { headers });
       return response.json()
@@ -353,7 +378,7 @@ const storeDicomSeg = async (naturalizedReport, headers, displaySetService) => {
       const compressedFile = pako.gzip(JSON.stringify(segSeries));
 
       return fetch(
-        `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/metadata&contentEncoding=gzip`,
+        `https://storage.googleapis.com/upload/storage/v1/b/${segBucket}/o?uploadType=media&name=${segPrefix}/studies/${StudyInstanceUID}/series/${SeriesInstanceUID}/metadata.json&contentEncoding=gzip`,
         {
           method: 'POST',
           headers: {
