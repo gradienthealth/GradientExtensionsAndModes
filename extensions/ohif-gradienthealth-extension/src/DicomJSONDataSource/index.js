@@ -45,7 +45,9 @@ const getMetaDataByURL = url => {
 const getInstanceUrl = (url, prefix, bucket, bucketPrefix) => {
   let modifiedUrl = url;
 
-  const schemaPresent = !!url.match(/^(dicomweb:|dicomzip:|wadouri:)/)
+  const schemaPresent = !!url.match(
+    /^(dicomweb:|dicomzip:|wadouri:|dicomtar:)/
+  );
   if (!schemaPresent) {
     const filePath = url.split('studies/')[1];
     modifiedUrl = `dicomweb:https://storage.googleapis.com/${bucket}/${
@@ -63,6 +65,10 @@ const getInstanceUrl = (url, prefix, bucket, bucketPrefix) => {
   const dicomwebRegex = /^dicomweb:/
   modifiedUrl = modifiedUrl.includes(":zip//")
     ? modifiedUrl.replace(dicomwebRegex, 'dicomzip:')
+    : modifiedUrl;
+
+  modifiedUrl = modifiedUrl.includes('.tar://')
+    ? modifiedUrl.replace(dicomwebRegex, 'dicomtar:')
     : modifiedUrl;
 
   return modifiedUrl;
