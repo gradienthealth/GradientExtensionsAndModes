@@ -2,6 +2,7 @@ import { eventTarget, Enums, cache } from '@cornerstonejs/core';
 import { utilities as csToolsUtils } from '@cornerstonejs/tools';
 import { DicomMetadataStore, pubSubServiceInterface, utils } from '@ohif/core';
 import { alphabet } from './utils';
+import { removePreviousFilesArraybuffer } from '../utils';
 
 const MAX_ROWS = 100000;
 
@@ -50,7 +51,8 @@ export default class GoogleSheetsService {
   }
 
   cacheNearbyStudyInstanceUIDs(id, bufferBack, bufferFront) {
-    const { CacheAPIService } = this.serviceManager.services;
+    const { CacheAPIService, uiNotificationService } =
+      this.serviceManager.services;
     const index = this.studyUIDToIndex[id];
     const min = index - bufferBack < 2 ? 2 : index - bufferBack;
     const max = index + bufferFront;
@@ -64,16 +66,35 @@ export default class GoogleSheetsService {
     const element = rowsToCache.splice(indexOfCurrentId, 1);
     rowsToCache.unshift(element[0]); // making the current studyid as first element
 
+    let hadMaxSizeError = false;
     rowsToCache.reduce((promise, row) => {
-      return promise.then(() => {
-        const url = row[urlIndex];
-        const params = new URLSearchParams('?' + url.split('?')[1]);
-        const StudyInstanceUID = getStudyInstanceUIDFromParams(params);
-        return CacheAPIService.cacheStudy(
-          StudyInstanceUID,
-          params.getAll('bucket')
-        );
-      });
+      return promise
+        .then(() => {
+          if (hadMaxSizeError) return Promise.resolve();
+
+          const url = row[urlIndex];
+          const params = new URLSearchParams('?' + url.split('?')[1]);
+          const StudyInstanceUID = getStudyInstanceUIDFromParams(params);
+          return CacheAPIService.cacheStudy(
+            StudyInstanceUID,
+            params.getAll('bucket')
+          );
+        })
+        .catch((error) => {
+          if (error.message?.includes('Maximum size')) {
+            hadMaxSizeError = true;
+            uiNotificationService.show({
+              title: 'Maximum size has reached',
+              message:
+                error.message ||
+                'You have reached the maximum size of fetching files for this study.',
+              type: 'error',
+              duration: 10000,
+            });
+          }
+
+          return;
+        });
     }, Promise.resolve());
   }
 
@@ -320,6 +341,7 @@ export default class GoogleSheetsService {
       );
 
       const nextParams = new URLSearchParams(window.location.search);
+      const prevStudyUID = getStudyInstanceUIDFromParams(nextParams);
       if (nextParams.get('StudyInstanceUIDs'))
         nextParams.set('StudyInstanceUIDs', StudyInstanceUID);
       else {
@@ -329,6 +351,10 @@ export default class GoogleSheetsService {
       buckets.forEach((bucket) => {
         nextParams.append('bucket', bucket);
       });
+
+      if (prevStudyUID !== StudyInstanceUID) {
+        removePreviousFilesArraybuffer(prevStudyUID, this.serviceManager);
+      }
 
       const nextURL =
         window.location.href.split('?')[0] + '?' + nextParams.toString();
@@ -440,7 +466,7 @@ function loadSegFiles(serviceManager) {
           segmentationsOfLoadedImage[0].displaySetInstanceUID
         );
       });
-      
+
       unsubscribe?.();
     }
   };

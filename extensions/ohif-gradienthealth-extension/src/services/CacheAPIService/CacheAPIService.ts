@@ -137,7 +137,7 @@ export default class CacheAPIService {
         (serie) => !segSOPClassUIDs.includes(serie.instances[0].SOPClassUID)
       )
       .flatMap((serie) => utils.getImageIdsFromInstances(serie.instances));
-    await Promise.all([
+    return await Promise.all([
       this.cacheImageIds(imageIds),
       this.cacheSegFiles(StudyInstanceUID),
     ]);
@@ -190,7 +190,15 @@ export default class CacheAPIService {
       );
     });
 
-    await Promise.all(promises)
+    return new Promise<void>((resolve, reject) => {
+      const id = setInterval(async () => {
+        if (promises.length === imageIds.length) {
+          clearInterval(id);
+          await Promise.all(promises).catch((error) => reject(error));
+          resolve();
+        }
+      }, 1000);
+    });
   }
 
   public async cacheSegFiles(studyInstanceUID) {
