@@ -15,7 +15,7 @@ export const getSegDisplaysetsOfReferencedImagesIds = (
   );
 };
 
-export const removePreviousFilesArraybuffer = (
+export const removeStudyFilesFromCache = (
   studyInstanceUID: string,
   servicesManager: Record<string, any>
 ) => {
@@ -25,10 +25,10 @@ export const removePreviousFilesArraybuffer = (
   );
   const urls = studyDisplaySets.flatMap((displaySet) =>
     displaySet.instances.reduce((imageIds, instance) => {
-      const handledUrl = instance.imageId.split(
+      const instanceUrl = instance.imageId.split(
         /dicomweb:|dicomtar:|dicomzip:/
       )[1];
-      return [...imageIds, ...(handledUrl ? [handledUrl] : [])];
+      return [...imageIds, ...(instanceUrl ? [instanceUrl] : [])];
     }, [])
   );
 
@@ -38,6 +38,7 @@ export const removePreviousFilesArraybuffer = (
     const urlParts = url.split('.tar');
 
     if (urlParts.length > 1) {
+      // Adding the '.tar' to the part since spliting with it removes it from the parts.
       fileUrls.add(urlParts[0] + '.tar');
     }
   }

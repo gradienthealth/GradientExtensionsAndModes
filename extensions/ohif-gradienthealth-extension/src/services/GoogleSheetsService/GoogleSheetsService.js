@@ -2,7 +2,7 @@ import { eventTarget, Enums, cache } from '@cornerstonejs/core';
 import { utilities as csToolsUtils } from '@cornerstonejs/tools';
 import { DicomMetadataStore, pubSubServiceInterface, utils } from '@ohif/core';
 import { alphabet } from './utils';
-import { removePreviousFilesArraybuffer } from '../utils';
+import { removeStudyFilesFromCache } from '../utils';
 
 const MAX_ROWS = 100000;
 
@@ -353,7 +353,9 @@ export default class GoogleSheetsService {
       });
 
       if (prevStudyUID !== StudyInstanceUID) {
-        removePreviousFilesArraybuffer(prevStudyUID, this.serviceManager);
+        // Remove the file arraybuffers( currently TAR files ) of the previous 
+        // study when switching to another study.
+        removeStudyFilesFromCache(prevStudyUID, this.serviceManager);
       }
 
       const nextURL =
