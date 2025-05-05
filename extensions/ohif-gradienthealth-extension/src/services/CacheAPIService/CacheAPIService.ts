@@ -1,5 +1,5 @@
 import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
-import { internal } from 'cornerstone-wado-image-loader';
+import { internal } from '@cornerstonejs/dicom-image-loader';
 const { getOptions } = internal;
 import _ from 'lodash';
 import {
