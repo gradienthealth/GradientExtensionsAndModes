@@ -85,6 +85,7 @@ export default class CacheAPIService {
 
   public async setViewedStudy(StudyInstanceUID) {
     await this.dataSource.retrieve.series.metadata({ StudyInstanceUID });
+    /* The getScope handling is not exist anymore in the cornerstone3D
     const study = DicomMetadataStore.getStudy(StudyInstanceUID);
     const imageIds = study.series.flatMap((serie) =>
       serie.instances.flatMap((instance) => instance.imageId)
@@ -117,6 +118,7 @@ export default class CacheAPIService {
         }
       });
     });
+    */
   }
 
   public async cacheStudy(StudyInstanceUID) {

@@ -39,7 +39,7 @@ function getPanelModule({
     },
     {
       name: 'form',
-      iconName: 'list-bullets',
+      iconName: 'tab-list-view',
       iconLabel: 'Form',
       label: 'Form',
       component: PanelForm.bind(null, {

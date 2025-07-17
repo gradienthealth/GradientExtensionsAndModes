@@ -50,7 +50,7 @@ export default class GoogleSheetsService {
   cacheNearbyStudyInstanceUIDs(id, bufferBack, bufferFront) {
     const { CacheAPIService } = this.serviceManager.services;
     const index = this.studyUIDToIndex[id];
-    const min = index - bufferBack < 2 ? 2 : index - bufferBack;
+    const min = index - bufferBack < 1 ? 1 : index - bufferBack;
     const max = index + bufferFront;
     const urlIndex = this.formHeader.findIndex((name) => name == 'URL');
     this.rows.slice(min, max).forEach((row) => {
@@ -260,6 +260,8 @@ export default class GoogleSheetsService {
       const dataSource = this.extensionManager.getActiveDataSource()[0];
       await dataSource.retrieve.series.metadata({ StudyInstanceUID });
       const studies = [DicomMetadataStore.getStudy(StudyInstanceUID)];
+      const activeProtocolId =
+        HangingProtocolService.getActiveProtocol().protocol.id || 'default';
       HangingProtocolService.run(
         {
           studies,
@@ -270,7 +272,7 @@ export default class GoogleSheetsService {
             }
           ),
         },
-        'breast'
+        activeProtocolId
       );
 
       const nextParams = new URLSearchParams(window.location.search);
@@ -278,8 +280,8 @@ export default class GoogleSheetsService {
       const nextURL =
         window.location.href.split('?')[0] + '?' + nextParams.toString();
       window.history.replaceState({}, null, nextURL);
+      await CacheAPIService.setViewedStudy(StudyInstanceUID);
       this.setFormByStudyInstanceUID(StudyInstanceUID);
-      CacheAPIService.setViewedStudy(StudyInstanceUID);
     } catch (e) {
       console.error(e);
     }
