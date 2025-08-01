@@ -159,6 +159,15 @@ export default class GoogleSheetsService {
     });
   }
 
+  writeFormValue(x, values) {
+    return this.formTemplate.map((ele) => {
+      const index = this.formHeader.findIndex((name) => name == ele.name);
+      if (index !== -1) {
+        x[index] = values[ele.order - 1];
+      }
+    });
+  }
+
   async readRange(
     min,
     max,
@@ -230,7 +239,10 @@ export default class GoogleSheetsService {
       this.sheetName,
       `A${this.index}:${alphabet[this.formHeader.length - 1]}${this.index}`,
       values
-    );
+    ).then(() => {
+      this.formValue = formValue;
+      this.writeFormValue(this.rows[this.index - 1], formValue);
+    });
     return values;
   }
 
