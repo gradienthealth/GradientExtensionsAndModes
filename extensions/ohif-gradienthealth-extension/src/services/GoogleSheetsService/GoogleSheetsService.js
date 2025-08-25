@@ -50,15 +50,29 @@ export default class GoogleSheetsService {
   cacheNearbyStudyInstanceUIDs(id, bufferBack, bufferFront) {
     const { CacheAPIService } = this.serviceManager.services;
     const index = this.studyUIDToIndex[id];
-    const min = index - bufferBack < 1 ? 1 : index - bufferBack;
+    const min = index - bufferBack < 2 ? 2 : index - bufferBack;
     const max = index + bufferFront;
     const urlIndex = this.formHeader.findIndex((name) => name == 'URL');
-    this.rows.slice(min, max).forEach((row) => {
-      const url = row[urlIndex];
-      const params = new URLSearchParams('?' + url.split('?')[1]);
-      const StudyInstanceUID = params.get('StudyInstanceUIDs');
-      CacheAPIService.cacheStudy(StudyInstanceUID);
-    });
+    const studyIdIndex = this.formHeader.findIndex((name) => name == 'ID');
+
+    const rowsToCache = this.rows.slice(min - 1, max);
+    const indexOfCurrentId = rowsToCache.findIndex(
+      (row) => row[studyIdIndex] === id
+    );
+    const element = rowsToCache.splice(indexOfCurrentId, 1);
+    rowsToCache.unshift(element[0]); // making the current studyid as first element
+
+    rowsToCache.reduce((promise, row) => {
+      return promise.then(() => {
+        const url = row[urlIndex];
+        const params = new URLSearchParams('?' + url.split('?')[1]);
+        const StudyInstanceUID = params.get('StudyInstanceUIDs');
+        return CacheAPIService.cacheStudy(
+          StudyInstanceUID,
+          params.getAll('bucket')
+        );
+      });
+    }, Promise.resolve());
   }
 
   setFormByStudyInstanceUID(id) {

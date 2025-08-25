@@ -127,7 +127,7 @@ export default class CacheAPIService {
     const imageIds = study.series.flatMap((serie) =>
       serie.instances.flatMap((instance) => instance.imageId)
     );
-    this.cacheImageIds(imageIds);
+    await this.cacheImageIds(imageIds);
   }
 
   public async cacheSeries(StudyInstanceUID, SeriesInstanceUID) {
@@ -141,9 +141,14 @@ export default class CacheAPIService {
     this.cacheImageIds(imageIds);
   }
 
-  public cacheImageIds(imageIds) {
+  public async cacheImageIds(imageIds) {
+    const promises: any[] = [];
+
     function sendRequest(imageId, options) {
-      return imageLoader.loadAndCacheImage(imageId, options).then(
+      const promise = imageLoader.loadAndCacheImage(imageId, options);
+      promises.push(promise);
+
+      return promise.then(
         () => {},
         (error) => {
           console.error(error);
@@ -169,6 +174,8 @@ export default class CacheAPIService {
         priority
       );
     });
+
+    await Promise.all(promises);
   }
 
   public async cacheMissingStudyImageIds(StudyInstanceUIDs) {
