@@ -121,10 +121,10 @@ export default class CacheAPIService {
     */
   }
 
-  public async cacheStudy(StudyInstanceUID, bucket, bucketPrefix) {
+  public async cacheStudy(StudyInstanceUID, buckets, bucketPrefix) {
     await this.dataSource.retrieve.series.metadata({
       StudyInstanceUID,
-      bucketDetails: { bucket, bucketPrefix },
+      bucketDetails: { buckets, bucketPrefix },
     });
     const study = DicomMetadataStore.getStudy(StudyInstanceUID);
     const imageIds = study.series.flatMap((serie) =>
