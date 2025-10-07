@@ -1,5 +1,6 @@
 import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
 import { alphabet } from './utils';
+import { addLoadSegmentationsListener } from '../../utils/loadSegmentations';
 
 const MAX_ROWS = 100000;
 
@@ -94,6 +95,17 @@ export default class GoogleSheetsService {
       const { UserAuthenticationService } = this.serviceManager.services;
       this.user = UserAuthenticationService.getUser();
       const params = new URLSearchParams(window.location.search);
+
+      if (
+        ['/segmentation', '/viewer'].some((path) =>
+          window.location.pathname.includes(path)
+        )
+      ) {
+        // Since sheet panel only used by longitudinal, segmentation and breast density mode,
+        // and breast density mode does not handles segmentation we are only loading
+        // segmentations in longitudinal and segmentation mode.
+        addLoadSegmentationsListener(this.serviceManager);
+      }
 
       if (!params.get('sheetId'))
         return this._broadcastEvent(EVENTS.GOOGLE_SHEETS_ERROR);
@@ -228,7 +240,7 @@ export default class GoogleSheetsService {
     });
   }
 
-  async writeFormToRow(formValue) {
+  async updateRow(formValue) {
     const values = this.formHeader.map((colName) => {
       const index = this.formTemplate.findIndex((ele) => {
         return colName == ele.name;
@@ -248,6 +260,14 @@ export default class GoogleSheetsService {
       }
       return null;
     });
+
+    // google sheets is 1-indexed, so take rows[index-1]
+    const updatedFormValue = this.rows[this.index - 1].map((element, index) =>
+      values[index] !== null ? values[index] : element
+    );
+
+    this.rows[this.index - 1] = updatedFormValue;
+    this.formValue = formValue;
 
     await this.writeRange(
       this.sheetId,

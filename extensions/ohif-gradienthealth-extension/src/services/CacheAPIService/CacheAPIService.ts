@@ -1,5 +1,5 @@
 import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
-import { internal } from '@cornerstonejs/dicom-image-loader';
+import { internal, wadouri } from '@cornerstonejs/dicom-image-loader';
 const { getOptions } = internal;
 import _ from 'lodash';
 import {
@@ -10,26 +10,32 @@ import {
   imageLoadPoolManager,
 } from '@cornerstonejs/core';
 
-const LOCAL_EVENTS = {};
+const LOCAL_EVENTS = {
+  IMAGE_CACHE_PREFETCHED: 'event::gradienthealth::image_cache_prefetched',
+};
 
 export default class CacheAPIService {
   listeners: { [key: string]: Function[] };
   EVENTS: { [key: string]: string };
   element: HTMLElement;
+  private servicesManager;
   private commandsManager;
   private extensionManager;
   private dataSource;
   private options;
   public storageUsage;
   public storageQuota;
+  private imageIdToFileUriMap;
 
   constructor(servicesManager, commandsManager, extensionManager) {
     this.listeners = {};
     this.EVENTS = LOCAL_EVENTS;
+    this.servicesManager = servicesManager;
     this.commandsManager = commandsManager;
     this.extensionManager = extensionManager;
     this.storageUsage = null;
     this.storageQuota = null;
+    this.imageIdToFileUriMap = new Map();
     Object.assign(this, pubSubServiceInterface);
   }
 
@@ -122,15 +128,27 @@ export default class CacheAPIService {
   }
 
   public async cacheStudy(StudyInstanceUID, buckets, bucketPrefix) {
+    const { sopClassUids: segSOPClassUIDs } =
+      this.extensionManager.getModuleEntry(
+        '@ohif/extension-cornerstone-dicom-seg.sopClassHandlerModule.dicom-seg'
+      );
     await this.dataSource.retrieve.series.metadata({
       StudyInstanceUID,
       bucketDetails: { buckets, bucketPrefix },
     });
     const study = DicomMetadataStore.getStudy(StudyInstanceUID);
-    const imageIds = study.series.flatMap((serie) =>
-      serie.instances.flatMap((instance) => instance.imageId)
-    );
-    await this.cacheImageIds(imageIds);
+    const imageIds = study.series
+      .filter(
+        (serie) => !segSOPClassUIDs.includes(serie.instances[0].SOPClassUID)
+      )
+      .flatMap((serie) =>
+        serie.instances.flatMap((instance) => instance.imageId)
+      );
+
+    await Promise.all([
+      this.cacheImageIds(imageIds),
+      this.cacheSegFiles(StudyInstanceUID),
+    ]);
   }
 
   public async cacheSeries(StudyInstanceUID, SeriesInstanceUID) {
@@ -152,7 +170,11 @@ export default class CacheAPIService {
       promises.push(promise);
 
       return promise.then(
-        () => {},
+        (imageLoadObject) => {
+          this._broadcastEvent(this.EVENTS.IMAGE_CACHE_PREFETCHED, {
+            imageLoadObject,
+          });
+        },
         (error) => {
           console.error(error);
         }
@@ -176,6 +198,42 @@ export default class CacheAPIService {
         additionalDetails,
         priority
       );
+    });
+
+    await Promise.all(promises);
+  }
+
+  public async cacheSegFiles(studyInstanceUID) {
+    const segSOPClassUIDs = ['1.2.840.10008.5.1.4.1.1.66.4'];
+    const { displaySetService, userAuthenticationService } =
+      this.servicesManager.services;
+
+    const study = DicomMetadataStore.getStudy(studyInstanceUID);
+    const headers = userAuthenticationService.getAuthorizationHeader();
+    const promises = study.series.map((serie) => {
+      const { SOPClassUID, SeriesInstanceUID, url } = serie.instances[0];
+      if (segSOPClassUIDs.includes(SOPClassUID)) {
+        const { scheme, url: parsedUrl } = wadouri.parseImageId(url);
+        if (scheme === 'dicomzip') {
+          return wadouri.loadZipRequest(parsedUrl, url);
+        }
+
+        const displaySet =
+          displaySetService.getDisplaySetsForSeries(SeriesInstanceUID)[0];
+
+        if (this.imageIdToFileUriMap.get(url) === displaySet.instance.imageId) {
+          return;
+        }
+
+        return fetch(parsedUrl, { headers })
+          .then((response) => response.arrayBuffer())
+          .then((buffer) => wadouri.fileManager.add(new Blob([buffer])))
+          .then((fileUri) => {
+            this.imageIdToFileUriMap.set(url, fileUri);
+            displaySet.instance.imageId = fileUri;
+            displaySet.instance.getImageId = () => fileUri;
+          });
+      }
     });
 
     await Promise.all(promises);
