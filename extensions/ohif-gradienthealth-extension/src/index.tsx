@@ -8,6 +8,7 @@ import CropDisplayAreaService from './services/CropDisplayAreaService';
 import CacheAPIService from './services/CacheAPIService';
 import overrideNormalizer from './utils/overrideNormalizer';
 import addAutoSegmentationSavingHandler from './utils/addAutoSegmentationSavingHandler';
+import addSegmentationBrushSizesHandler from './utils/addSegmentationBrushSizesHandler';
 
 // import { CornerstoneEventTarget } from '@cornerstonejs/core/CornerstoneEventTarget';
 // import { Events } from '@cornerstonejs/core/Events';
@@ -43,6 +44,17 @@ const gradientHealthExtension = {
         return viewCodeSeq[0].CodeValue
       }
     );
+  },
+  getUtilityModule({ servicesManager }) {
+    return [
+      {
+        name: 'common',
+        exports: {
+          addSegmentationBrushSizesHandler:
+            addSegmentationBrushSizesHandler.bind(null, servicesManager),
+        },
+      },
+    ];
   },
 };
 
