@@ -35,12 +35,12 @@ export default function addAutoSegmentationSavingHandler(
 
       if (!modifiedSegmentationIds.includes(segmentationId)) {
         modifiedSegmentationIds.push(segmentationId);
-      }
 
-      setSegmentationSavingStatus(
-        segmentationId,
-        constants.SAVED_STATUS_ICON.MODIFIED
-      );
+        setSegmentationSavingStatus(
+          segmentationId,
+          constants.SAVED_STATUS_ICON.MODIFIED
+        );
+      }
 
       timerId = setTimeout(() => {
         const datasources = extensionManager.getActiveDataSource();
@@ -59,6 +59,10 @@ export default function addAutoSegmentationSavingHandler(
             throwErrors: true,
           })
             .then((displaySetInstanceUIDs) => {
+              modifiedSegmentationIds.splice(
+                modifiedSegmentationIds.indexOf(modifiedSegmentationId),
+                1
+              );
               if (displaySetInstanceUIDs) {
                 segmentationService.remove(segmentationId);
                 viewportGridService.setDisplaySetsForViewport({

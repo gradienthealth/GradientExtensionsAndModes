@@ -1,12 +1,17 @@
 import { pubSubServiceInterface } from '@ohif/core';
-import { 
-    EVENTS as CS_EVENTS,
-    eventTarget as CornerstoneEventTarget,
-    getEnabledElement
+import {
+  EVENTS as CS_EVENTS,
+  eventTarget as CornerstoneEventTarget,
+  getEnabledElement,
+  cache,
 } from '@cornerstonejs/core';
 
 import * as tf from '@tensorflow/tfjs';
-import { IStackViewport } from '@cornerstonejs/core/dist/esm/types';
+import {
+  IStackViewport,
+  IVolumeViewport,
+} from '@cornerstonejs/core/dist/esm/types';
+import { correctZoomFactors, setDisplayArea } from './utils';
 
 const EVENTS = {
     CROP_DISPLAY_AREA_INIT: 'event::gradienthealth::CropDisplayAreaService:init',
@@ -159,5 +164,136 @@ export default class CropDisplayAreaService {
 
     destroy() {
     }
+
+  public async focusToSegment(
+    segmentationId: string,
+    segmentIndex: number
+  ): Promise<void> {
+    const {
+      segmentationService,
+      viewportGridService,
+      cornerstoneViewportService,
+      displaySetService,
+      uiNotificationService,
+    } = this.serviceManager.services;
+
+    const segmentation = segmentationService.getSegmentation(segmentationId);
+    const segDisplayset = displaySetService.getDisplaySetByUID(segmentationId);
+    if (segDisplayset.Modality !== 'SEG') {
+      return;
+    }
+
+    const { imageIds, referencedImageIds } =
+      segmentation?.representationData.Labelmap || {};
+    const referencedDisplaySetInstanceUID =
+      segDisplayset.referencedDisplaySetInstanceUID;
+    const { viewports } = viewportGridService.getState();
+
+    if (!imageIds || !referencedImageIds) {
+      uiNotificationService.show({
+        title: 'Segment focusing',
+        type: 'warning',
+        message: 'No labelmap representationdata found',
+      });
+      return;
+    }
+
+    const viewportsWithSegmentation: IStackViewport | IVolumeViewport = [];
+    viewports.forEach((viewport) => {
+      const cornerstoneViewport =
+        cornerstoneViewportService.getCornerstoneViewport(viewport.viewportId);
+
+      if (
+        viewport.displaySetInstanceUIDs.includes(
+          referencedDisplaySetInstanceUID
+        ) &&
+        cornerstoneViewport?.getCurrentImageId()
+      ) {
+        viewportsWithSegmentation.push(cornerstoneViewport);
+      }
+    });
+
+    if (!viewportsWithSegmentation.length) {
+      uiNotificationService.show({
+        title: 'Segment focusing',
+        type: 'warning',
+        message: 'No viewports found with original orientation',
+      });
+      return;
+    }
+
+    const currentImageId = viewportsWithSegmentation[0].getCurrentImageId();
+    const currentImageIdIndex = viewportsWithSegmentation[0].getSliceIndex();
+    const imageIdIndex = referencedImageIds.findIndex(
+      (referencedImageId) => referencedImageId === currentImageId
+    );
+
+    segmentIndex =
+      segmentIndex || segmentation.segments.findIndex(({ active }) => active);
+
+    const image = cache.getImage(imageIds[imageIdIndex]);
+    const { rows, columns } = image;
+    const dimensions = [columns, rows, imageIds.length];
+    const pixelData = image.getPixelData();
+
+    const mask = tf.tidy(() => {
+      let tensor;
+      tensor = tf.tensor2d(new Float32Array(pixelData), [
+        dimensions[1],
+        dimensions[0],
+      ]);
+
+      return tensor.equal(segmentIndex); // get boolean
+    });
+
+    const maskCoordinates = await tf.whereAsync(mask);
+
+    const { xMax, yMax, xMin, yMin } = tf.tidy(() => {
+      const transpose = tf.einsum('ij->ji', maskCoordinates);
+      tf.dispose(mask);
+      tf.dispose(maskCoordinates);
+
+      let xMin = 0,
+        xMax = dimensions[0],
+        yMin = 0,
+        yMax = dimensions[1];
+
+      if (transpose.size !== 0) {
+        xMin = transpose.gather(1).min().dataSync()[0];
+        xMax = transpose.gather(1).max().dataSync()[0];
+        yMin = transpose.gather(0).min().dataSync()[0];
+        yMax = transpose.gather(0).max().dataSync()[0];
+      }
+
+      return { xMax, yMax, xMin, yMin };
+    });
+
+    let bboxWidth = xMax + 1 - xMin;
+    let bboxHeight = yMax + 1 - yMin;
+    let width = dimensions[0];
+    let height = dimensions[1];
+    const imageAspectRatio = width / height;
+
+    const imagePoint = [
+      (xMax + xMin) / (2 * width),
+      (yMax + yMin) / (2 * height),
+    ] as [number, number];
+    const zoomFactors = {
+      x: bboxWidth / width,
+      y: bboxHeight / height,
+    };
+
+    viewportsWithSegmentation.forEach((viewport) => {
+      const canvasAspectRatio = viewport.sWidth / viewport.sHeight;
+      const zoomFactorsCopy = { ...zoomFactors };
+      correctZoomFactors(zoomFactorsCopy, imageAspectRatio, canvasAspectRatio);
+
+      setDisplayArea(
+        viewport,
+        zoomFactorsCopy,
+        imagePoint,
+        currentImageIdIndex
+      );
+    });
   }
-  
+}
