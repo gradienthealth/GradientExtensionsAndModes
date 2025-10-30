@@ -6,6 +6,9 @@ import { id } from './id.js';
 import GoogleSheetsService from './services/GoogleSheetsService';
 import CropDisplayAreaService from './services/CropDisplayAreaService';
 import CacheAPIService from './services/CacheAPIService';
+import overrideNormalizer from './utils/overrideNormalizer';
+import addAutoSegmentationSavingHandler from './utils/addAutoSegmentationSavingHandler';
+import addSegmentationBrushSizesHandler from './utils/addSegmentationBrushSizesHandler';
 
 // import { CornerstoneEventTarget } from '@cornerstonejs/core/CornerstoneEventTarget';
 // import { Events } from '@cornerstonejs/core/Events';
@@ -19,6 +22,14 @@ const gradientHealthExtension = {
   getHangingProtocolModule,
   getPanelModule,
   getViewportModule,
+  onModeEnter({ servicesManager, extensionManager, commandsManager }) {
+    overrideNormalizer();
+    addAutoSegmentationSavingHandler(
+      servicesManager,
+      extensionManager,
+      commandsManager
+    );
+  },
   preRegistration({ servicesManager, commandsManager, extensionManager}) {
     servicesManager.registerService(GoogleSheetsService(servicesManager, commandsManager, extensionManager));
     servicesManager.registerService(CropDisplayAreaService(servicesManager));
@@ -33,6 +44,17 @@ const gradientHealthExtension = {
         return viewCodeSeq[0].CodeValue
       }
     );
+  },
+  getUtilityModule({ servicesManager }) {
+    return [
+      {
+        name: 'common',
+        exports: {
+          addSegmentationBrushSizesHandler:
+            addSegmentationBrushSizesHandler.bind(null, servicesManager),
+        },
+      },
+    ];
   },
 };
 
