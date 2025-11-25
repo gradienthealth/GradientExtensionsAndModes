@@ -20,7 +20,13 @@ function dhm(t) {
   return [d, h, m]
 }
 
-export default function UserProfile({value}) {
+export default function UserProfile({name, value}) {
+    const [user, setuser] = React.useState(null);
+
+    React.useEffect(() => {
+      parseUser(value);
+    }, [value]);
+
     const getDateText = (lastUpdated) => {
         const [days, hours, minutes] = dhm(Date.now() - lastUpdated)
 
@@ -39,14 +45,18 @@ export default function UserProfile({value}) {
         return `just now`
     }
 
-    try{
-        value = JSON.parse(value)
-    } catch (e){
-        console.error(e, value)
-        value = null
-    }
-    
-    if(value){
+    const parseUser = (value) => {
+      try {
+        value = JSON.parse(value);
+      } catch (e) {
+        console.error(e, value);
+        value = null;
+      }
+
+      setuser(value);
+    };
+
+    if(user){
         return (
             <Paper>
                 <CardHeader
@@ -61,10 +71,15 @@ export default function UserProfile({value}) {
                                 crossOrigin: "anonymous",
                                 referrerPolicy: "no-referrer"
                             }}
-                            src={ value.picture }/>
+                            src={ user.picture }/>
                     }
-                    title={ value.email }
-                    subheader={ `Updated ${getDateText(value.lastUpdated)}` }
+                    title={ user.email }
+                    subheader={
+                    <>
+                        <div>{name}</div>
+                        <div>Updated {getDateText(user.lastUpdated)}</div>
+                    </>
+                    }
                 />
             </Paper>
         );
