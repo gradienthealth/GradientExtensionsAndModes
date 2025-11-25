@@ -127,7 +127,12 @@ export default class CacheAPIService {
     */
   }
 
-  public async cacheStudy(StudyInstanceUID, buckets, bucketPrefix) {
+  public async cacheStudy(
+    StudyInstanceUID,
+    SeriesInstanceUIDs = [],
+    buckets = [],
+    bucketPrefix = null
+  ) {
     const { sopClassUids: segSOPClassUIDs } =
       this.extensionManager.getModuleEntry(
         '@ohif/extension-cornerstone-dicom-seg.sopClassHandlerModule.dicom-seg'
@@ -135,6 +140,9 @@ export default class CacheAPIService {
     await this.dataSource.retrieve.series.metadata({
       StudyInstanceUID,
       bucketDetails: { buckets, bucketPrefix },
+      ...(SeriesInstanceUIDs.length
+        ? { filters: { seriesInstanceUID: SeriesInstanceUIDs } }
+        : {}),
     });
     const study = DicomMetadataStore.getStudy(StudyInstanceUID);
     const imageIds = study.series

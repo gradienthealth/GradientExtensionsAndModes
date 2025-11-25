@@ -48,39 +48,76 @@ export default class GoogleSheetsService {
     Object.assign(this, pubSubServiceInterface);
   }
 
-  cacheNearbyStudyInstanceUIDs(id, bufferBack, bufferFront) {
+  cacheNearbyStudyInstanceUIDs(ids, bufferBack, bufferFront) {
     const { CacheAPIService } = this.serviceManager.services;
-    const index = this.studyUIDToIndex[id];
+    const targetRowUniqueId = this.createRowUniqueId(
+      ids.studyInstanceUIDs,
+      ids.seriesInstanceUIDs
+    );
+    const index = this.studyUIDToIndex[targetRowUniqueId];
     const min = index - bufferBack < 2 ? 2 : index - bufferBack;
     const max = index + bufferFront;
-    const urlIndex = this.formHeader.findIndex((name) => name == 'URL');
-    const studyIdIndex = this.formHeader.findIndex((name) => name == 'ID');
+    const urlIndex = this.getFormColumnIndex('URL');
 
     const rowsToCache = this.rows.slice(min - 1, max);
-    const indexOfCurrentId = rowsToCache.findIndex(
-      (row) => row[studyIdIndex] === id
-    );
-    const element = rowsToCache.splice(indexOfCurrentId, 1);
-    rowsToCache.unshift(element[0]); // making the current studyid as first element
+    const uniqueStudiesMap = new Map();
+    rowsToCache.forEach((row) => {
+      const params = new URLSearchParams('?' + row[urlIndex].split('?')[1]);
+      const studyInstanceUIDs = params.getAll('StudyInstanceUIDs');
+      const seriesInstanceUIDs = params.getAll('SeriesInstanceUIDs');
 
-    rowsToCache.reduce((promise, row) => {
+      const rowUniqueId = this.createRowUniqueId(
+        studyInstanceUIDs,
+        seriesInstanceUIDs
+      );
+
+      studyInstanceUIDs.forEach((studyInstanceUID) => {
+        uniqueStudiesMap.set(rowUniqueId, {
+          rowUniqueId,
+          studyInstanceUID,
+          seriesInstanceUIDs: params.getAll('SeriesInstanceUIDs'),
+          buckets: params.getAll('bucket'),
+          bucketPrefix: params.get('bucket-prefix'),
+        });
+      });
+    });
+
+    const studiesFilteredOfDuplicates = Array.from(uniqueStudiesMap.values());
+    let indexOfCurrentRow = null,
+      studiesInCurrentRow = 0;
+
+    for (const [index, study] of studiesFilteredOfDuplicates.entries()) {
+      if (study.rowUniqueId === targetRowUniqueId) {
+        indexOfCurrentRow ??= index;
+        studiesInCurrentRow++;
+      }
+    }
+    const element = studiesFilteredOfDuplicates.splice(
+      indexOfCurrentRow,
+      studiesInCurrentRow
+    );
+    studiesFilteredOfDuplicates.unshift(element[0]); // making the current studyid as first element
+
+    studiesFilteredOfDuplicates.reduce((promise, study) => {
       return promise.then(() => {
-        const url = row[urlIndex];
-        const params = new URLSearchParams('?' + url.split('?')[1]);
-        const StudyInstanceUID = params.get('StudyInstanceUIDs');
         return CacheAPIService.cacheStudy(
-          StudyInstanceUID,
-          params.getAll('bucket'),
-          params.get('bucket-prefix')
+          study.studyInstanceUID,
+          study.seriesInstanceUIDs,
+          study.buckets,
+          study.bucketPrefix
         );
       });
     }, Promise.resolve());
   }
 
-  setFormByStudyInstanceUID(id) {
-    const index = this.studyUIDToIndex[id];
+  setFormByStudyInstanceUID(ids) {
+    const rowUniqueId = this.createRowUniqueId(
+      ids.studyInstanceUIDs,
+      ids.seriesInstanceUIDs
+    );
+    const index = this.studyUIDToIndex[rowUniqueId];
     this.setFormByIndex(index);
-    this.cacheNearbyStudyInstanceUIDs(id, 2, 32);
+    this.cacheNearbyStudyInstanceUIDs(ids, 2, 32);
   }
 
   setFormByIndex(index) {
@@ -115,7 +152,7 @@ export default class GoogleSheetsService {
       this.sheetName = params.get('sheetName');
 
       // Get settings config from sheets
-      this.settings = await this.readRange(1, 6, this.sheetId, 'Settings');
+      this.settings = await this.readRange(1, 7, this.sheetId, 'Settings');
 
       // Get values for current row from sheets
       this.formHeader = (await this.readRange(1, 1)).values[0];
@@ -123,19 +160,28 @@ export default class GoogleSheetsService {
       // TODO: Handle more than MAX_ROWS
       this.rows = (await this.readRange(1, MAX_ROWS)).values;
       this.formHeader = this.rows[0];
-
-      const urlIndex = this.formHeader.findIndex((name) => name == 'URL');
+      const urlIndex = this.getFormColumnIndex('URL');
       this.studyUIDToIndex = this.rows.slice(1).reduce((prev, curr, idx) => {
         const url = curr[urlIndex];
         const params = new URLSearchParams('?' + url.split('?')[1]);
-        const StudyInstanceUID = params.get('StudyInstanceUIDs');
+        const StudyInstanceUIDs = params.getAll('StudyInstanceUIDs');
+        const SeriesInstanceUIDs = params.getAll('SeriesInstanceUIDs');
+
+        const rowUniqueId = this.createRowUniqueId(
+          StudyInstanceUIDs,
+          SeriesInstanceUIDs
+        );
 
         // Google Sheets is 1-indexed and we ignore first row as header row thus + 2
-        prev[StudyInstanceUID] = idx + 2;
+        prev[rowUniqueId] = idx + 2;
         return prev;
       }, {});
 
-      this.index = this.studyUIDToIndex[params.get('StudyInstanceUIDs')];
+      const currentRowUniqueId = this.createRowUniqueId(
+        params.getAll('StudyInstanceUIDs'),
+        params.getAll('SeriesInstanceUIDs')
+      );
+      this.index = this.studyUIDToIndex[currentRowUniqueId];
 
       // Map formTemplate and formValue
       const values = this.settings.values[0].map((_, colIndex) =>
@@ -170,7 +216,10 @@ export default class GoogleSheetsService {
         })
         .sort((a, b) => a.order - b.order);
 
-      this.setFormByStudyInstanceUID(params.get('StudyInstanceUIDs'));
+      this.setFormByStudyInstanceUID({
+        studyInstanceUIDs: params.getAll('StudyInstanceUIDs'),
+        seriesInstanceUIDs: params.getAll('SeriesInstanceUIDs'),
+      });
     } catch (e) {
       console.error(e);
       this._broadcastEvent(EVENTS.GOOGLE_SHEETS_ERROR);
@@ -179,7 +228,7 @@ export default class GoogleSheetsService {
 
   readFormValue(x) {
     return this.formTemplate.map((ele) => {
-      const index = this.formHeader.findIndex((name) => name == ele.name);
+      const index = this.getFormColumnIndex(ele.name);
       if (index !== -1) {
         return convertFormValues(x[index]);
       }
@@ -188,7 +237,7 @@ export default class GoogleSheetsService {
 
   writeFormValue(x, values) {
     return this.formTemplate.map((ele) => {
-      const index = this.formHeader.findIndex((name) => name == ele.name);
+      const index = this.getFormColumnIndex(ele.name);
       if (index !== -1) {
         x[index] = values[ele.order - 1];
       }
@@ -243,21 +292,18 @@ export default class GoogleSheetsService {
   async updateRow(formValue) {
     const values = this.formHeader.map((colName) => {
       const index = this.formTemplate.findIndex((ele) => {
-        return colName == ele.name;
+        return colName == ele.columnName || colName === ele.name;
       });
-      if (index > 0) {
+      // Handle all userProfile/ last updated column values
+      const userLastUpdated = this.getUserLastUpdated(colName);
+      if (userLastUpdated) {
+        return userLastUpdated;
+      }
+
+      if (index >= 0) {
         return formValue[index];
       }
 
-      if (colName === 'Updated By') {
-        const user =
-          this.serviceManager.services.UserAuthenticationService.getUser();
-        return JSON.stringify({
-          email: user.profile.email,
-          picture: user.profile.picture,
-          lastUpdated: Date.now(),
-        });
-      }
       return null;
     });
 
@@ -267,17 +313,14 @@ export default class GoogleSheetsService {
     );
 
     this.rows[this.index - 1] = updatedFormValue;
-    this.formValue = formValue;
+    this.formValue = updatedFormValue;
 
     await this.writeRange(
       this.sheetId,
       this.sheetName,
       `A${this.index}:${alphabet[this.formHeader.length - 1]}${this.index}`,
       values
-    ).then(() => {
-      this.formValue = formValue;
-      this.writeFormValue(this.rows[this.index - 1], formValue);
-    });
+    );
     return values;
   }
 
@@ -297,21 +340,43 @@ export default class GoogleSheetsService {
       if (!rowValues) {
         window.location.href = `https://docs.google.com/spreadsheets/d/${this.sheetId}`;
       }
-      const index = this.formHeader.findIndex((name) => name == 'URL');
+      const index = this.getFormColumnIndex('URL');
       const url = rowValues[index];
       const params = new URLSearchParams('?' + url.split('?')[1]);
-      const StudyInstanceUID = params.get('StudyInstanceUIDs');
+      const StudyInstanceUIDs = params.getAll('StudyInstanceUIDs');
+      const SeriesInstanceUIDs = params.getAll('SeriesInstanceUIDs');
       const buckets = params.getAll('bucket');
       const bucketPrefix = params.get('bucket-prefix');
-      if (!StudyInstanceUID) {
+      if (!StudyInstanceUIDs?.length) {
         window.location.href = `https://docs.google.com/spreadsheets/d/${this.sheetId}`;
       }
       const dataSource = this.extensionManager.getActiveDataSource()[0];
-      await dataSource.retrieve.series.metadata({
-        StudyInstanceUID,
-        bucketDetails: { buckets, bucketPrefix },
-      });
-      const studies = [DicomMetadataStore.getStudy(StudyInstanceUID)];
+      await Promise.all(
+        StudyInstanceUIDs.map((studyInstanceUID) =>
+          dataSource.retrieve.series.metadata({
+            StudyInstanceUID: studyInstanceUID,
+            bucketDetails: { buckets, bucketPrefix },
+            ...(SeriesInstanceUIDs.length
+              ? { filters: { seriesInstanceUID: SeriesInstanceUIDs } }
+              : {}),
+          })
+        )
+      );
+
+      const studies = [];
+      for (const studyInstanceUID of StudyInstanceUIDs) {
+        const study = DicomMetadataStore.getStudy(studyInstanceUID);
+        study.series = study.series.filter(
+          (aSeries) =>
+            !SeriesInstanceUIDs.length ||
+            SeriesInstanceUIDs.includes(aSeries.DeidSeriesInstanceUID)
+        );
+
+        if (study.series.length) {
+          studies.push(study);
+        }
+      }
+
       const activeProtocolId =
         HangingProtocolService.getActiveProtocol().protocol.id || 'default';
       HangingProtocolService.run(
@@ -320,7 +385,11 @@ export default class GoogleSheetsService {
           activeStudy: studies[0],
           displaySets: DisplaySetService.getActiveDisplaySets().filter(
             (ele) => {
-              return ele.StudyInstanceUID === StudyInstanceUID;
+              return (
+                StudyInstanceUIDs.includes(ele.StudyInstanceUID) &&
+                (!SeriesInstanceUIDs.length ||
+                  SeriesInstanceUIDs.includes(ele.SeriesInstanceUID))
+              );
             }
           ),
         },
@@ -328,7 +397,18 @@ export default class GoogleSheetsService {
       );
 
       const nextParams = new URLSearchParams(window.location.search);
-      nextParams.set('StudyInstanceUIDs', StudyInstanceUID);
+      nextParams.delete('StudyInstanceUIDs');
+      if (StudyInstanceUIDs.length) {
+        StudyInstanceUIDs.forEach((studyUID) => {
+          nextParams.append('StudyInstanceUIDs', studyUID);
+        });
+      }
+      nextParams.delete('SeriesInstanceUIDs');
+      if (SeriesInstanceUIDs.length) {
+        SeriesInstanceUIDs.forEach((seriesUID) => {
+          nextParams.append('SeriesInstanceUIDs', seriesUID);
+        });
+      }
       nextParams.delete('bucket');
       nextParams.delete('bucket-prefix');
       if (buckets.length) {
@@ -342,11 +422,90 @@ export default class GoogleSheetsService {
       const nextURL =
         window.location.href.split('?')[0] + '?' + nextParams.toString();
       window.history.replaceState({}, null, nextURL);
-      await CacheAPIService.setViewedStudy(StudyInstanceUID);
-      this.setFormByStudyInstanceUID(StudyInstanceUID);
+      // The current functionalities of CacheAPIService.setViewedStudy function is already done here.
+      // await CacheAPIService.setViewedStudy(StudyInstanceUIDs[0]);
+      this.setFormByStudyInstanceUID({
+        studyInstanceUIDs: StudyInstanceUIDs,
+        seriesInstanceUIDs: SeriesInstanceUIDs,
+      });
     } catch (e) {
       console.error(e);
     }
+  }
+
+  getFormColumnIndex(name) {
+    const nameRow = this.settings.values.find((row) => row[0] === 'name');
+    const columnNameRow = this.settings.values.find(
+      (row) => row[0] === 'columnName'
+    );
+
+    const columnNameMap =
+      nameRow && columnNameRow
+        ? nameRow.map((name, index) => [name, columnNameRow[index]])
+        : [];
+
+    const urlColumnName = Object.fromEntries(columnNameMap)?.[name] || name;
+    if (urlColumnName) {
+      return this.formHeader.findIndex((name) => name === urlColumnName);
+    }
+
+    // Find the column in the sheet if not in the config
+    return this.formHeader.findIndex((header) => header === name);
+  }
+
+  getSheetConfig() {
+    try {
+      const nameRow = this.settings.values.find((row) => row[0] === 'name');
+      const templateRow = this.settings.values.find(
+        (row) => row[0] === 'template'
+      );
+      const configIndex = nameRow.findIndex((value) => value === 'CONFIG');
+      return JSON.parse(templateRow[configIndex]);
+    } catch (error) {
+      console.warn('Error parsing Google sheets Config');
+      return {};
+    }
+  }
+
+  getUserLastUpdated(columnName) {
+    const config = this.getSheetConfig();
+    const users = config.users || [];
+
+    const result = JSON.stringify({
+      email: this.user.profile.email,
+      picture: this.user.profile.picture,
+      lastUpdated: Date.now(),
+    });
+
+    if (users.length && users.includes(columnName)) {
+      const rowValues = this.rows[this.index - 1];
+
+      const targetColumnName = users.find((userColumnName) => {
+        const columnIndex = this.getFormColumnIndex(userColumnName);
+        const userProfile = rowValues[columnIndex];
+
+        return (
+          !userProfile ||
+          JSON.parse(userProfile).email === this.user.profile.email
+        );
+      });
+
+      if (targetColumnName === columnName) {
+        return result;
+      }
+    }
+
+    if (columnName === 'Updated By') {
+      return result;
+    }
+
+    return null;
+  }
+
+  createRowUniqueId(studyInstanceUIDs = [], seriesInstanceUIDs = []) {
+    return `${studyInstanceUIDs.sort().join('+')}_${
+      seriesInstanceUIDs.sort().join('+') || 'NO-SERIES-FILTER'
+    }`;
   }
 
   destroy() {

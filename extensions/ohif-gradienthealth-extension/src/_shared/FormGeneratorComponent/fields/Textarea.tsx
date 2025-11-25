@@ -5,13 +5,17 @@ import TextField from '@mui/material/TextField';
 import debounce from 'lodash.debounce';
 
 export default function Textarea({formIndex, name, value, defaultValue, options, onChange}) {
-  const [val, setVal] = React.useState(value !== null ? value : (defaultValue !== null ? defaultValue : ''));  
+  const [val, setVal] = React.useState(value ?? defaultValue ?? '');  
   const { rows } = options
   const debouncedOnChange = useMemo(
     () => debounce((formIndex, value) => {
       onChange({formIndex, value})
     }, 600), [onChange]
   );
+
+  React.useEffect(() => {
+    setVal(value ?? defaultValue ?? '');
+  }, [value, defaultValue]);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setVal(event.target.value);

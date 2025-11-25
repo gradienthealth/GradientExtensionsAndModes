@@ -44,7 +44,7 @@ function FormGeneratorComponent({ formTemplate, formValue, setFormValue }) {
         case 'user_profile':
           return (
             <div key={idx} className="p-2 bg-primary-dark">
-              <UserProfile value={formValue[idx]}/>
+              <UserProfile name={ele.name} value={formValue[idx]}/>
             </div>
           )
         default:
