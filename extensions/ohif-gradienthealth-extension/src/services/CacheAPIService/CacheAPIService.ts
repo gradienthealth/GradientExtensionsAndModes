@@ -195,7 +195,7 @@ export default class CacheAPIService {
       preScale: {
         enabled: true,
       },
-      useRGBA: true,
+      useRGBA: false,
     };
 
     imageIds.forEach((imageId) => {
