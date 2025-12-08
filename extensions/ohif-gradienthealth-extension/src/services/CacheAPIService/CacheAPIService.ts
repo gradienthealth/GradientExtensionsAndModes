@@ -189,7 +189,7 @@ export default class CacheAPIService {
       );
     }
 
-    const priority = 0;
+    const priority = 1;
     const requestType = Enums.RequestType.Prefetch;
     const options = {
       preScale: {
