@@ -471,32 +471,26 @@ export default class GoogleSheetsService {
     const config = this.getSheetConfig();
     const users = config.users || [];
 
-    const result = JSON.stringify({
-      email: this.user.profile.email,
-      picture: this.user.profile.picture,
-      lastUpdated: Date.now(),
-    });
-
     if (users.length && users.includes(columnName)) {
       const rowValues = this.rows[this.index - 1];
 
       const targetColumnName = users.find((userColumnName) => {
         const columnIndex = this.getFormColumnIndex(userColumnName);
-        const userProfile = rowValues[columnIndex];
-
-        return (
-          !userProfile ||
-          JSON.parse(userProfile).email === this.user.profile.email
-        );
+        const userEmail = rowValues[columnIndex];
+        return !userEmail || userEmail === this.user.profile.email;
       });
 
       if (targetColumnName === columnName) {
-        return result;
+        return this.user.profile.email;
       }
     }
 
     if (columnName === 'Updated By') {
-      return result;
+      return JSON.stringify({
+        email: this.user.profile.email,
+        picture: this.user.profile.picture,
+        lastUpdated: Date.now(),
+      });
     }
 
     return null;
