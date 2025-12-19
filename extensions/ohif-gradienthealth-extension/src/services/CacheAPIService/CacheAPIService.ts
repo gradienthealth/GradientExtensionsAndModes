@@ -171,44 +171,52 @@ export default class CacheAPIService {
   }
 
   public async cacheImageIds(imageIds) {
-    const promises: any[] = [];
+    return new Promise<void>(async (resolve) => {
+      const promises: any[] = [];
 
-    function sendRequest(imageId, options) {
-      const promise = imageLoader.loadAndCacheImage(imageId, options);
-      promises.push(promise);
-
-      return promise.then(
-        (imageLoadObject) => {
-          this._broadcastEvent(this.EVENTS.IMAGE_CACHE_PREFETCHED, {
-            imageLoadObject,
-          });
-        },
-        (error) => {
-          console.error(error);
+      async function resolveAllPromises() {
+        if (promises.length === imageIds.length) {
+          await Promise.all(promises);
+          resolve();
         }
-      );
-    }
+      }
 
-    const priority = 1;
-    const requestType = Enums.RequestType.Prefetch;
-    const options = {
-      preScale: {
-        enabled: true,
-      },
-      useRGBA: false,
-    };
+      function sendRequest(imageId, options) {
+        const promise = imageLoader.loadAndCacheImage(imageId, options);
+        promises.push(promise);
+        resolveAllPromises();
 
-    imageIds.forEach((imageId) => {
-      const additionalDetails = { imageId };
-      imageLoadPoolManager.addRequest(
-        sendRequest.bind(this, imageId, options),
-        requestType,
-        additionalDetails,
-        priority
-      );
+        return promise.then(
+          (imageLoadObject) => {
+            this._broadcastEvent(this.EVENTS.IMAGE_CACHE_PREFETCHED, {
+              imageLoadObject,
+            });
+          },
+          (error) => {
+            console.error(error);
+          }
+        );
+      }
+
+      const priority = 1;
+      const requestType = Enums.RequestType.Prefetch;
+      const options = {
+        preScale: {
+          enabled: true,
+        },
+        useRGBA: false,
+      };
+
+      imageIds.forEach((imageId) => {
+        const additionalDetails = { imageId };
+        imageLoadPoolManager.addRequest(
+          sendRequest.bind(this, imageId, options),
+          requestType,
+          additionalDetails,
+          priority
+        );
+      });
     });
-
-    await Promise.all(promises);
   }
 
   public async cacheSegFiles(studyInstanceUID) {
