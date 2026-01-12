@@ -366,14 +366,18 @@ export default class GoogleSheetsService {
       const studies = [];
       for (const studyInstanceUID of StudyInstanceUIDs) {
         const study = DicomMetadataStore.getStudy(studyInstanceUID);
-        study.series = study.series.filter(
+
+        const filteredSeries = study.series.filter(
           (aSeries) =>
             !SeriesInstanceUIDs.length ||
             SeriesInstanceUIDs.includes(aSeries.DeidSeriesInstanceUID)
         );
 
-        if (study.series.length) {
-          studies.push(study);
+        if (filteredSeries.length) {
+          studies.push({
+            ...study,
+            series: filteredSeries,
+          });
         }
       }
 
