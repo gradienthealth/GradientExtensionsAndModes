@@ -4,17 +4,24 @@ import { metaData } from '@cornerstonejs/core';
 const { Normalizer, ImageNormalizer } = normalizers;
 
 export default function overrideNormalizer() {
-  class SingleSliceImageNormalizer extends ImageNormalizer {
+  class CustomImageNormalizer extends ImageNormalizer {
     normalize() {
-      this.dataset = getHandledSingleImageDataset(this.datasets[0], metaData);
-      super.normalizeMultiframe();
+      if (this.datasets.length === 1) {
+        this.dataset = getHandledSingleImageDataset(this.datasets[0], metaData);
+        super.normalizeMultiframe();
+      } else {
+        this.datasets = this.datasets.map((dataset) =>
+          getHandledSingleImageDataset(dataset, metaData)
+        );
+        super.normalize();
+      }
     }
   }
 
-  const XAImageNormalizer = SingleSliceImageNormalizer;
-  const MGImageNormalizer = SingleSliceImageNormalizer;
-  const USImageNormalizer = SingleSliceImageNormalizer;
-  const CRImageNormalizer = SingleSliceImageNormalizer;
+  const XAImageNormalizer = CustomImageNormalizer;
+  const MGImageNormalizer = CustomImageNormalizer;
+  const USImageNormalizer = CustomImageNormalizer;
+  const CRImageNormalizer = CustomImageNormalizer;
 
   class SecondaryCapturedImageNormalizer extends ImageNormalizer {
     normalize() {
@@ -50,7 +57,7 @@ export default function overrideNormalizer() {
     }
   }
 
-  const SingleImageSOPClassUIDMap: Record<string, any> = {
+  const CustomSOPClassUIDMap: Record<string, any> = {
     '1.2.840.10008.5.1.4.1.1.1.2': MGImageNormalizer,
     '1.2.840.10008.5.1.4.1.1.1.2.1': MGImageNormalizer,
     '1.2.840.10008.5.1.4.1.1.13.1.3': MGImageNormalizer,
@@ -66,8 +73,8 @@ export default function overrideNormalizer() {
 
     if (normalizerClass) {
       return normalizerClass;
-    } else if (SingleImageSOPClassUIDMap[sopClassUID]) {
-      return SingleImageSOPClassUIDMap[sopClassUID];
+    } else if (CustomSOPClassUIDMap[sopClassUID]) {
+      return CustomSOPClassUIDMap[sopClassUID];
     }
   };
 }
@@ -92,6 +99,7 @@ function getHandledSingleImageDataset(dataset, metaData) {
         ...columnCosines,
       ],
     },
+    FrameContentSequence: {},
   };
 
   return {
