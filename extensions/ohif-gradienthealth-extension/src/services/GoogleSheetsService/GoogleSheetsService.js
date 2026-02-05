@@ -98,6 +98,7 @@ export default class GoogleSheetsService {
     );
     studiesFilteredOfDuplicates.unshift(element[0]); // making the current studyid as first element
 
+    // Cache the studies one by one, after completely fetching the previous one.
     studiesFilteredOfDuplicates.reduce((promise, study) => {
       return promise.then(() => {
         return CacheAPIService.cacheStudy(
@@ -292,7 +293,7 @@ export default class GoogleSheetsService {
   async updateRow(formValue) {
     const values = this.formHeader.map((colName) => {
       const index = this.formTemplate.findIndex((ele) => {
-        return colName == ele.columnName || colName === ele.name;
+        return colName === ele.columnName || colName === ele.name;
       });
       // Handle all userProfile/ last updated column values
       const userLastUpdated = this.getUserLastUpdated(colName);

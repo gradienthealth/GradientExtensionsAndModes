@@ -171,52 +171,40 @@ export default class CacheAPIService {
   }
 
   public async cacheImageIds(imageIds) {
-    return new Promise<void>(async (resolve) => {
-      const promises: any[] = [];
+    const options = {
+      preScale: { enabled: true },
+      useRGBA: false,
+    };
 
-      async function resolveAllPromises() {
-        if (promises.length === imageIds.length) {
-          await Promise.all(promises);
-          resolve();
-        }
-      }
+    const taskPromises = imageIds.map((imageId) => {
+      return new Promise<void>((resolve, reject) => {
+        const requestFn = async () => {
+          try {
+            const imageLoadObject = await imageLoader.loadAndCacheImage(
+              imageId,
+              options
+            );
 
-      function sendRequest(imageId, options) {
-        const promise = imageLoader.loadAndCacheImage(imageId, options);
-        promises.push(promise);
-        resolveAllPromises();
-
-        return promise.then(
-          (imageLoadObject) => {
             this._broadcastEvent(this.EVENTS.IMAGE_CACHE_PREFETCHED, {
               imageLoadObject,
             });
-          },
-          (error) => {
-            console.error(error);
+            resolve();
+          } catch (error) {
+            console.error(`Failed to cache ${imageId}`, error);
+            resolve();
           }
-        );
-      }
+        };
 
-      const priority = 1;
-      const requestType = Enums.RequestType.Prefetch;
-      const options = {
-        preScale: {
-          enabled: true,
-        },
-        useRGBA: false,
-      };
-
-      imageIds.forEach((imageId) => {
-        const additionalDetails = { imageId };
         imageLoadPoolManager.addRequest(
-          sendRequest.bind(this, imageId, options),
-          requestType,
-          additionalDetails,
-          priority
+          requestFn,
+          Enums.RequestType.Prefetch,
+          { imageId },
+          1
         );
       });
     });
+
+    await Promise.all(taskPromises);
   }
 
   public async cacheSegFiles(studyInstanceUID) {
