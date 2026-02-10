@@ -1,7 +1,4 @@
 import getPanelModule from './getPanelModule';
-import getViewportModule from './getViewportModule';
-import getHangingProtocolModule from './getHangingProtocolModule';
-
 import { id } from './id.js';
 import GoogleSheetsService from './services/GoogleSheetsService';
 import CropDisplayAreaService from './services/CropDisplayAreaService';
@@ -19,9 +16,7 @@ const gradientHealthExtension = {
    * Only required property. Should be a unique value across all extensions.
    */
   id,
-  getHangingProtocolModule,
   getPanelModule,
-  getViewportModule,
   onModeEnter({ servicesManager, extensionManager, commandsManager }) {
     overrideNormalizer();
     addAutoSegmentationSavingHandler(

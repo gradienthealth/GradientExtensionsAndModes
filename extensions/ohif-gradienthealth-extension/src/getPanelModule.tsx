@@ -1,8 +1,5 @@
 import {
-  PanelMeasurementTableTracking,
-  PanelStudyBrowserTracking,
   PanelForm,
-  PanelFormAndMeasurementTable
 } from './panels';
 
 // TODO:
@@ -16,44 +13,11 @@ function getPanelModule({
 }) {
   return [
     {
-      name: 'seriesList',
-      iconName: 'group-layers',
-      iconLabel: 'Studies',
-      label: 'Studies',
-      component: PanelStudyBrowserTracking.bind(null, {
-        commandsManager,
-        extensionManager,
-        servicesManager,
-      }),
-    },
-    {
-      name: 'measurements',
-      iconName: 'list-bullets',
-      iconLabel: 'Measure',
-      label: 'Measurements',
-      component: PanelMeasurementTableTracking.bind(null, {
-        commandsManager,
-        extensionManager,
-        servicesManager,
-      }),
-    },
-    {
       name: 'form',
       iconName: 'tab-list-view',
       iconLabel: 'Form',
       label: 'Form',
       component: PanelForm.bind(null, {
-        commandsManager,
-        extensionManager,
-        servicesManager,
-      }),
-    },
-    {
-      name: 'form-and-measurements',
-      iconName: 'list-bullets',
-      iconLabel: 'Form',
-      label: 'Form',
-      component: PanelFormAndMeasurementTable.bind(null, {
         commandsManager,
         extensionManager,
         servicesManager,
