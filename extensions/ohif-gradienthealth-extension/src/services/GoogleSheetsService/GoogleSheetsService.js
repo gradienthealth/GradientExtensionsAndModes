@@ -45,6 +45,10 @@ export default class GoogleSheetsService {
     this.studyUIDToIndex = {};
     this.extensionManager = extensionManager;
     this.DicomMetadataStore = DicomMetadataStore;
+
+    // A flag to store whether the displayset filtering using invalid series uid from URL is handled.
+    this.hasHandledInvalidSeriesFiltering = false;
+
     Object.assign(this, pubSubServiceInterface);
   }
 
@@ -433,6 +437,7 @@ export default class GoogleSheetsService {
         studyInstanceUIDs: StudyInstanceUIDs,
         seriesInstanceUIDs: SeriesInstanceUIDs,
       });
+      this.setHasHandledInvalidSeriesFiltering(false);
     } catch (e) {
       console.error(e);
     }
@@ -505,6 +510,14 @@ export default class GoogleSheetsService {
     return `${studyInstanceUIDs.sort().join('+')}_${
       seriesInstanceUIDs.sort().join('+') || 'NO-SERIES-FILTER'
     }`;
+  }
+
+  getHasHandledInvalidSeriesFiltering() {
+    return this.hasHandledInvalidSeriesFiltering;
+  }
+
+  setHasHandledInvalidSeriesFiltering(value) {
+    this.hasHandledInvalidSeriesFiltering = value;
   }
 
   destroy() {
