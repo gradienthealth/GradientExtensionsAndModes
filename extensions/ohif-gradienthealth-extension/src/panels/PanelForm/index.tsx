@@ -19,17 +19,34 @@ function usePrevious(value) {
 }
 
 function PanelForm({ servicesManager, extensionManager }) {
-  const { GoogleSheetsService } = servicesManager.services
+  const { GoogleSheetsService, MeasurementService } = servicesManager.services
   const [formTemplate, setFormTemplate] = useState(GoogleSheetsService.getFormTemplate());
   const [formValue, setFormValue] = useState(GoogleSheetsService.getFormValue());
   const [error, setError] = useState(false);
   const [firstLoad, setFirstLoad] = useState(true);
   const [initLoading, setInitLoading] = useState(!Boolean(formValue && formTemplate));
   const [loading, setLoading] = useState(false);
-  const onNext = ()=> GoogleSheetsService.getRow(1)
-  const onPrevious = ()=> GoogleSheetsService.getRow(-1)
+  const onNext = () => {
+    cleanUpMeasurements();
+    GoogleSheetsService.getRow(1);
+  };
+  const onPrevious = () => {
+    cleanUpMeasurements();
+    GoogleSheetsService.getRow(-1);
+  };
   const debouncedOnNext = useMemo(() => debounce(onNext, 300), []);
   const debouncedOnPrevious = useMemo(() => debounce(onPrevious, 300), []);
+  let machineEventSender;
+  try {
+    const utilityModule = extensionManager.getModuleEntry(
+      '@ohif/extension-measurement-tracking.utilityModule.measurement-tracking'
+    );
+    const { useTrackedMeasurements } = utilityModule.exports;
+    const [_, sendTrackedMeasurementsEvent] = useTrackedMeasurements();
+    machineEventSender = sendTrackedMeasurementsEvent;
+  } catch (error) {
+    console.log('Error getting machineEventSender or tracking not available');
+  }
 
   useEffect(() => {
     const subscriptions = [];
@@ -59,6 +76,15 @@ function PanelForm({ servicesManager, extensionManager }) {
     }
     setFirstLoad(false)
   }, [formValue]);
+
+  
+  function cleanUpMeasurements() {
+    if (machineEventSender) {
+      machineEventSender('UNTRACK_ALL', {});
+    } else {
+      MeasurementService.clearMeasurements();
+    }
+  }
 
   if(error){
     return (

@@ -6,6 +6,7 @@ import CacheAPIService from './services/CacheAPIService';
 import overrideNormalizer from './utils/overrideNormalizer';
 import addAutoSegmentationSavingHandler from './utils/addAutoSegmentationSavingHandler';
 import addSegmentationBrushSizesHandler from './utils/addSegmentationBrushSizesHandler';
+import { addAutoPHIBoundingBoxToolLabeler } from './utils/phiBoundingBoxMeasurementUtils';
 
 // import { CornerstoneEventTarget } from '@cornerstonejs/core/CornerstoneEventTarget';
 // import { Events } from '@cornerstonejs/core/Events';
@@ -24,6 +25,7 @@ const gradientHealthExtension = {
       extensionManager,
       commandsManager
     );
+    addAutoPHIBoundingBoxToolLabeler(servicesManager);
   },
   preRegistration({ servicesManager, commandsManager, extensionManager}) {
     servicesManager.registerService(GoogleSheetsService(servicesManager, commandsManager, extensionManager));
