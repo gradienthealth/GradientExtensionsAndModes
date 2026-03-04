@@ -50,7 +50,10 @@ export default function PHIBoxSection({ formIndex, name, value, onChange }) {
   };
 
   const handleClear = () => {
-    measurementService.clearMeasurements();
+    const phiBoundingBoxMeasurements = measurementService.getMeasurements(
+      (m) => m.toolName === phiBoundingBoxToolName
+    );
+    phiBoundingBoxMeasurements.forEach((m) => measurementService.remove(m.uid));
   };
 
   // Find the tool configuration

@@ -529,7 +529,7 @@ export default class GoogleSheetsService {
   }
 
   loadAnnotationsFromSheet(rowIndex) {
-    const dataSource = extensionManager.getActiveDataSource()[0];
+    const dataSource = this.extensionManager.getActiveDataSource()[0];
     const phiBoundingBoxes = this.getPHIBoundingBoxes(
       rowIndex,
       dataSource.getConfig().name
@@ -655,9 +655,9 @@ export default class GoogleSheetsService {
       });
     } catch (error) {
       console.warn(`Error parsing sheet PHI bounding boxes:${error.message}`);
-    } finally {
-      return phiBoundingBoxes;
     }
+
+    return phiBoundingBoxes;
   }
 
   destroy() {
