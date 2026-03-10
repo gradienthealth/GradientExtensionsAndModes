@@ -5,6 +5,7 @@ import Checkbox from './fields/Checkbox'
 import Textarea from './fields/Textarea'
 import DisplayValue from './fields/DisplayValue'
 import UserProfile from './fields/UserProfile'
+import PHIBoxSection from './fields/PHIBoxSection';
 
 function FormGeneratorComponent({ formTemplate, formValue, setFormValue }) {
   const onChangeHandler = ({formIndex, value}) => {
@@ -47,6 +48,17 @@ function FormGeneratorComponent({ formTemplate, formValue, setFormValue }) {
               <UserProfile name={ele.name} value={formValue[idx]}/>
             </div>
           )
+        case 'phi_box_section':
+          return (
+            <div key={idx} className="p-2 bg-primary-dark">
+              <PHIBoxSection
+                formIndex={idx}
+                name={ele.name}
+                value={formValue[idx]}
+                onChange={onChangeHandler}
+              />
+            </div>
+          );
         default:
           return (
             <div key={idx} className="p-2 bg-primary-dark">
