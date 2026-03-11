@@ -1,6 +1,12 @@
-import { DicomMetadataStore, pubSubServiceInterface } from '@ohif/core';
+import { metaData, utilities } from '@cornerstonejs/core';
+import {
+  DicomMetadataStore,
+  pubSubServiceInterface,
+  utils as ohifUtils,
+} from '@ohif/core';
 import { alphabet } from './utils';
 import { addLoadSegmentationsListener } from '../../utils/loadSegmentations';
+import { Enums as CSExtensionEnums } from '@ohif/extension-cornerstone';
 
 const MAX_ROWS = 100000;
 
@@ -43,6 +49,7 @@ export default class GoogleSheetsService {
     this.formHeader = null;
     this.rows = null;
     this.studyUIDToIndex = {};
+    this.commandsManager = commandsManager;
     this.extensionManager = extensionManager;
     this.DicomMetadataStore = DicomMetadataStore;
 
@@ -122,6 +129,7 @@ export default class GoogleSheetsService {
     );
     const index = this.studyUIDToIndex[rowUniqueId];
     this.setFormByIndex(index);
+    this.loadAnnotationsFromSheet(index);
     this.cacheNearbyStudyInstanceUIDs(ids, 2, 32);
   }
 
@@ -518,6 +526,138 @@ export default class GoogleSheetsService {
 
   setHasHandledInvalidSeriesFiltering(value) {
     this.hasHandledInvalidSeriesFiltering = value;
+  }
+
+  loadAnnotationsFromSheet(rowIndex) {
+    const dataSource = this.extensionManager.getActiveDataSource()[0];
+    const phiBoundingBoxes = this.getPHIBoundingBoxes(
+      rowIndex,
+      dataSource.getConfig().name
+    );
+
+    const { MeasurementService } = this.serviceManager.services;
+
+    const annotationType = 'PHIBoundingBox';
+
+    const {
+      CORNERSTONE_3D_TOOLS_SOURCE_NAME,
+      CORNERSTONE_3D_TOOLS_SOURCE_VERSION,
+    } = CSExtensionEnums;
+
+    const mappings = MeasurementService.getSourceMappings(
+      CORNERSTONE_3D_TOOLS_SOURCE_NAME,
+      CORNERSTONE_3D_TOOLS_SOURCE_VERSION
+    );
+    const source = MeasurementService.getSource(
+      CORNERSTONE_3D_TOOLS_SOURCE_NAME,
+      CORNERSTONE_3D_TOOLS_SOURCE_VERSION
+    );
+    const matchingMapping = mappings.find(
+      (m) => m.annotationType === annotationType
+    );
+
+    phiBoundingBoxes.forEach(({ imageId, boxWorldCoords }, index) => {
+      const imagePlaneModule = metaData.get('imagePlaneModule', imageId);
+      const frameOfReferenceUID = imagePlaneModule?.frameOfReferenceUID;
+
+      const annotation = {
+        annotationUID: ohifUtils.guid(),
+        highlighted: false,
+        invalidated: true,
+        isLocked: false,
+        isVisible: true,
+        metadata: {
+          toolName: 'PHIBoundingBox',
+          referencedImageId: imageId,
+          FrameOfReferenceUID: frameOfReferenceUID,
+        },
+        data: {
+          handles: {
+            points: [
+              [...boxWorldCoords[0]],
+              [...boxWorldCoords[1]],
+              [...boxWorldCoords[2]],
+              [...boxWorldCoords[3]],
+            ],
+            activeHandleIndex: null,
+            textBox: {
+              hasMoved: false,
+              worldPosition: [0, 0, 0],
+              worldBoundingBox: {
+                topLeft: [0, 0, 0],
+                topRight: [0, 0, 0],
+                bottomLeft: [0, 0, 0],
+                bottomRight: [0, 0, 0],
+              },
+            },
+          },
+          cachedStats: {},
+          label: `PHI Bounding Box ${index + 1}`,
+        },
+        isSelected: false,
+      };
+
+      const newAnnotationUID = MeasurementService.addRawMeasurement(
+        source,
+        annotationType,
+        { annotation },
+        matchingMapping.toMeasurementSchema,
+        dataSource
+      );
+
+      this.commandsManager.runCommand('updateMeasurement', {
+        uid: newAnnotationUID,
+        code: annotation.data.finding,
+      });
+    });
+  }
+
+  getPHIBoundingBoxes(rowIndex, dataSourceName) {
+    const settingsNameRow = this.settings.values.find(
+      (row) => row[0] === 'name'
+    );
+    const settingsTypeRow = this.settings.values.find(
+      (row) => row[0] === 'type'
+    );
+
+    const phiSectionTemplateIndex = settingsTypeRow.findIndex(
+      (type) => type === 'phi_box_section'
+    );
+    const phiBoundingBoxesColumnIndex = this.getFormColumnIndex(
+      settingsNameRow[phiSectionTemplateIndex]
+    );
+
+    const phiBoundingBoxes = [];
+    try {
+      const parsedValue = JSON.parse(
+        this.rows[rowIndex - 1][phiBoundingBoxesColumnIndex]
+      );
+
+      Object.entries(parsedValue).forEach(([imageId, boxes]) => {
+        const formattedImageId = `${dataSourceName}:${imageId}`;
+        boxes.forEach(([topLeft, bottomRight]) => {
+          const boxImageCoords = [
+            [topLeft[0], topLeft[1]],
+            [bottomRight[0], topLeft[1]],
+            [topLeft[0], bottomRight[1]],
+            [bottomRight[0], bottomRight[1]],
+          ];
+
+          const boxWorldCoords = boxImageCoords.map((imageCoords) =>
+            utilities.imageToWorldCoords(formattedImageId, imageCoords)
+          );
+
+          phiBoundingBoxes.push({
+            imageId: formattedImageId,
+            boxWorldCoords,
+          });
+        });
+      });
+    } catch (error) {
+      console.warn(`Error parsing sheet PHI bounding boxes:${error.message}`);
+    }
+
+    return phiBoundingBoxes;
   }
 
   destroy() {
