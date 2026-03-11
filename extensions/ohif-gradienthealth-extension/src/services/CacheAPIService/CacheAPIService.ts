@@ -235,7 +235,7 @@ export default class CacheAPIService {
           .then((fileUri) => {
             this.imageIdToFileUriMap.set(url, fileUri);
             displaySet.instance.imageId = fileUri;
-            displaySet.instance.getImageId = () => fileUri;
+            displaySet.images[0].getImageId = () => fileUri;
           });
       }
     });
@@ -247,8 +247,6 @@ export default class CacheAPIService {
     const { url, imageId } = displaySet.instances[0];
     const fileUri = wadouri.fileManager.add(blob);
     displaySet.instance.imageId = fileUri;
-    displaySet.instance.getImageId = () => fileUri;
-    displaySet.images[0].imageId = fileUri;
     displaySet.images[0].getImageId = () => fileUri;
     this.imageIdToFileUriMap.set(url, fileUri);
 
@@ -288,7 +286,10 @@ export default class CacheAPIService {
         const timeNow = new Date();
         const timeSincePut = timeNow - date;
         const millisecondsInDay = 8.64e7;
-        if (lastViewed !== 'undefined' || timeSincePut > 7 * millisecondsInDay) {
+        if (
+          lastViewed !== 'undefined' ||
+          timeSincePut > 7 * millisecondsInDay
+        ) {
           window.caches.delete(scope);
         }
       } catch (err) {

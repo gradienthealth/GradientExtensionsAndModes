@@ -1,89 +1,71 @@
 import { normalizers } from 'dcmjs';
-import { metaData } from '@cornerstonejs/core';
 
-const { Normalizer, ImageNormalizer } = normalizers;
+const { SEGImageNormalizer } = normalizers;
 
 export default function overrideNormalizer() {
-  class CustomImageNormalizer extends ImageNormalizer {
-    normalize() {
-      if (this.datasets.length === 1) {
-        this.dataset = getHandledSingleImageDataset(this.datasets[0], metaData);
-        super.normalizeMultiframe();
-      } else {
-        this.datasets = this.datasets.map((dataset) =>
-          getHandledSingleImageDataset(dataset, metaData)
-        );
-        super.normalize();
-      }
+  const originalNormalize = SEGImageNormalizer.prototype.normalize;
+
+  function customNormalize() {
+    if (this.datasets.length === 1) {
+      this.dataset = getHandledSingleImageDataset(this.datasets[0]);
+      this.normalizeMultiframe();
+    } else {
+      this.datasets = this.datasets.map((dataset) =>
+        getHandledSingleImageDataset(dataset)
+      );
+      originalNormalize.call(this);
     }
   }
 
-  const XAImageNormalizer = CustomImageNormalizer;
-  const MGImageNormalizer = CustomImageNormalizer;
-  const USImageNormalizer = CustomImageNormalizer;
-  const CRImageNormalizer = CustomImageNormalizer;
+  const XAImageNormalize = customNormalize;
+  const MGImageNormalize = customNormalize;
+  const USImageNormalize = customNormalize;
+  const CRImageNormalize = customNormalize;
 
-  class SecondaryCapturedImageNormalizer extends ImageNormalizer {
-    normalize() {
-      let normalizerClass: { new (datasets) };
-      switch (this.dataSets[0].Modality) {
-        case 'MG':
-          normalizerClass = Normalizer.normalizerForSOPClassUID(
-            '1.2.840.10008.5.1.4.1.1.1.2'
-          );
-          break;
-        case 'XA':
-          normalizerClass = Normalizer.normalizerForSOPClassUID(
-            '1.2.840.10008.5.1.4.1.1.12.1'
-          );
-          break;
-        case 'US':
-          normalizerClass = Normalizer.normalizerForSOPClassUID(
-            '1.2.840.10008.5.1.4.1.1.6.1'
-          );
-          break;
-        case 'CR':
-          normalizerClass = Normalizer.normalizerForSOPClassUID(
-            '1.2.840.10008.5.1.4.1.1.1'
-          );
-          break;
-        default:
-          super.normalize();
-          return;
-      }
-
-      const normalizer = new normalizerClass(this.dataSets);
-      normalizer.normalize();
+  function secondaryCaptureNormalize() {
+    let normalizerFunction: () => void;
+    switch (this.dataSets[0].Modality) {
+      case 'MG':
+        normalizerFunction = MGImageNormalize;
+        break;
+      case 'XA':
+        normalizerFunction = XAImageNormalize;
+        break;
+      case 'US':
+        normalizerFunction = USImageNormalize;
+        break;
+      case 'CR':
+        normalizerFunction = CRImageNormalize;
+        break;
+      default:
+        customNormalize();
+        return;
     }
+    normalizerFunction();
   }
 
-  const CustomSOPClassUIDMap: Record<string, any> = {
-    '1.2.840.10008.5.1.4.1.1.1.2': MGImageNormalizer,
-    '1.2.840.10008.5.1.4.1.1.1.2.1': MGImageNormalizer,
-    '1.2.840.10008.5.1.4.1.1.13.1.3': MGImageNormalizer,
-    '1.2.840.10008.5.1.4.1.1.12.1': XAImageNormalizer,
-    '1.2.840.10008.5.1.4.1.1.7': SecondaryCapturedImageNormalizer,
-    '1.2.840.10008.5.1.4.1.1.6.1': USImageNormalizer,
-    '1.2.840.10008.5.1.4.1.1.1': CRImageNormalizer,
+  const CustomSOPClassUIDMap: Record<string, () => void> = {
+    '1.2.840.10008.5.1.4.1.1.1.2': MGImageNormalize,
+    '1.2.840.10008.5.1.4.1.1.1.2.1': MGImageNormalize,
+    '1.2.840.10008.5.1.4.1.1.13.1.3': MGImageNormalize,
+    '1.2.840.10008.5.1.4.1.1.12.1': XAImageNormalize,
+    '1.2.840.10008.5.1.4.1.1.7': secondaryCaptureNormalize,
+    '1.2.840.10008.5.1.4.1.1.6.1': USImageNormalize,
+    '1.2.840.10008.5.1.4.1.1.1': CRImageNormalize,
   };
 
-  const parentNormalizerForSOPClassUID = Normalizer.normalizerForSOPClassUID;
-  Normalizer.normalizerForSOPClassUID = (sopClassUID: string) => {
-    const normalizerClass = parentNormalizerForSOPClassUID(sopClassUID);
-
-    if (normalizerClass) {
-      return normalizerClass;
-    } else if (CustomSOPClassUIDMap[sopClassUID]) {
-      return CustomSOPClassUIDMap[sopClassUID];
+  SEGImageNormalizer.prototype.normalize = function () {
+    if (CustomSOPClassUIDMap[this.datasets[0].SOPClassUID]) {
+      const normalizeFn = CustomSOPClassUIDMap[this.datasets[0].SOPClassUID];
+      normalizeFn.call(this);
+    } else {
+      originalNormalize.call(this);
     }
   };
 }
 
-function getHandledSingleImageDataset(dataset, metaData) {
-  const { rowCosines, columnCosines } = metaData.get(
-    'imagePlaneModule',
-    dataset.imageId
-  );
+function getHandledSingleImageDataset(dataset) {
+  const { RowCosines, ColumnCosines } = dataset;
 
   const PerFrameFunctionalGroupsSequence = {
     PlanePositionSequence: {
@@ -95,8 +77,8 @@ function getHandledSingleImageDataset(dataset, metaData) {
     },
     PlaneOrientationSequence: {
       ImageOrientationPatient: dataset.ImageOrientationPatient || [
-        ...rowCosines,
-        ...columnCosines,
+        ...RowCosines,
+        ...ColumnCosines,
       ],
     },
     FrameContentSequence: {},

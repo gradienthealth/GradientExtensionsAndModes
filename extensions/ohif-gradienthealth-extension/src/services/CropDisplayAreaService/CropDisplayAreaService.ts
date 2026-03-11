@@ -225,8 +225,10 @@ export default class CropDisplayAreaService {
 
     segmentIndex =
       segmentIndex || segmentation.segments.findIndex(({ active }) => active);
+    const segmentCachedStats = segmentation.segments[segmentIndex].cachedStats;
     const segmentCenterWorld =
-      segmentation.segments[segmentIndex].cachedStats.namedStats.center.value;
+      segmentCachedStats.namedStats?.center.value ||
+      segmentCachedStats.center.world;
 
     viewportsWithSegmentation.forEach(async (viewport) => {
       let xMin, xMax, yMin, yMax;
