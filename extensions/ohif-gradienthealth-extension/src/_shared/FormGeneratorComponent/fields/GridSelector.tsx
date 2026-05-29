@@ -18,8 +18,32 @@ export default function GridSelector({ formIndex, name, value, defaultValue, opt
         <Typography sx={{ fontSize: 14 }} color="text.secondary" gutterBottom>
           { name }
         </Typography>
-        <Typography variant="body2" component="div">
-          { Boolean(labels.find(ele=>(ele.value==val)))  ? labels.find(ele=>(ele.value==val)).description : '?' }
+        <Typography
+          variant="body2"
+          component="div"
+          className="flex justify-between"
+        >
+          {Boolean(labels.find((ele) => ele.value === val)) ? (
+            <>
+              <span
+                className="overflow-y-auto truncate"
+                title={labels.find((ele) => ele.value === val).description}
+              >
+                {labels.find((ele) => ele.value === val).description}
+              </span>
+              <button
+                className="border border-black ml-1 px-1 rounded"
+                onClick={() => {
+                  onChange({ formIndex: formIndex, value: '' });
+                  setVal('');
+                }}
+              >
+                Clear
+              </button>
+            </>
+          ) : (
+            '?'
+          )}
         </Typography>
       </div>
       { 
