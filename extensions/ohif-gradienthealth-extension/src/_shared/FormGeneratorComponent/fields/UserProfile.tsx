@@ -4,100 +4,111 @@ import CardHeader from '@mui/material/CardHeader';
 import Avatar from '@mui/material/Avatar';
 
 function dhm(t) {
-    var cd = 24 * 60 * 60 * 1000,
-        ch = 60 * 60 * 1000,
-        d = Math.floor(t / cd),
-        h = Math.floor( (t - d * cd) / ch),
-        m = Math.round( (t - d * cd - h * ch) / 60000)
-  if( m === 60 ){
+  var cd = 24 * 60 * 60 * 1000,
+    ch = 60 * 60 * 1000,
+    d = Math.floor(t / cd),
+    h = Math.floor((t - d * cd) / ch),
+    m = Math.round((t - d * cd - h * ch) / 60000);
+  if (m === 60) {
     h++;
     m = 0;
   }
-  if( h === 24 ){
+  if (h === 24) {
     d++;
     h = 0;
   }
-  return [d, h, m]
+  return [d, h, m];
 }
 
-export default function UserProfile({name, value}) {
-    const [user, setuser] = React.useState(null);
+export default function UserProfile({
+  name,
+  value,
+}: {
+  name: string;
+  value: string | null;
+}) {
+  const [user, setuser] = React.useState(null);
 
-    React.useEffect(() => {
-      parseUser(value);
-    }, [value]);
+  React.useEffect(() => {
+    parseUser(value);
+  }, [value]);
 
-    const getDateText = (lastUpdated) => {
-        const [days, hours, minutes] = dhm(Date.now() - lastUpdated)
+  const getDateText = (lastUpdated: number) => {
+    const [days, hours, minutes] = dhm(Date.now() - lastUpdated);
 
-        if(days > 7){
-            return (new Date(lastUpdated)).toLocaleDateString('en-us', { year:"numeric", month:"short", day:"numeric"})
-        }
-        if(days > 2){
-            return `${days} days ago`
-        }
-        if(hours > 2){
-            return `${hours} hours ago`
-        }
-        if(minutes > 2){
-            return `${minutes} mins ago`
-        }
-        return `just now`
+    if (days > 7) {
+      return new Date(lastUpdated).toLocaleDateString('en-us', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
     }
+    if (days > 2) {
+      return `${days} days ago`;
+    }
+    if (hours > 2) {
+      return `${hours} hours ago`;
+    }
+    if (minutes > 2) {
+      return `${minutes} mins ago`;
+    }
+    return `just now`;
+  };
 
-    const parseUser = (value) => {
-      try {
+  const parseUser = (value: string | JSON | null) => {
+    try {
+      if (typeof value === 'string') {
         value = JSON.parse(value);
-      } catch (e) {
-        console.error(e, value);
-        value = null;
       }
-
-      setuser(value);
-    };
-
-    if(user){
-        return (
-            <Paper>
-                <CardHeader
-                    sx={{
-                        "& .MuiCardHeader-content": {
-                            overflow: "hidden"
-                        }
-                    }}
-                    avatar={
-                        <Avatar 
-                            imgProps={{
-                                crossOrigin: "anonymous",
-                                referrerPolicy: "no-referrer"
-                            }}
-                            src={ user.picture }/>
-                    }
-                    title={ user.email }
-                    subheader={
-                    <>
-                        <div>{name}</div>
-                        <div>Updated {getDateText(user.lastUpdated)}</div>
-                    </>
-                    }
-                />
-            </Paper>
-        );
+    } catch (e) {
+      console.error(e, value);
+      value = null;
     }
+
+    setuser(value);
+  };
+
+  if (user) {
     return (
-        <Paper>
-            <CardHeader
-                sx={{
-                    "& .MuiCardHeader-content": {
-                        overflow: "hidden"
-                    }
-                }}
-                avatar={
-                    <Avatar/>
-                }
-                title={ '----' }
-                subheader={ `No last update` }
+      <Paper>
+        <CardHeader
+          sx={{
+            '& .MuiCardHeader-content': {
+              overflow: 'hidden',
+            },
+          }}
+          avatar={
+            <Avatar
+              imgProps={{
+                crossOrigin: 'anonymous',
+                referrerPolicy: 'no-referrer',
+              }}
+              src={user.picture}
             />
-        </Paper>
-    )
+          }
+          title={user.email}
+          subheader={
+            <>
+              <div>{name}</div>
+              <div>Updated {getDateText(user.lastUpdated)}</div>
+            </>
+          }
+        />
+      </Paper>
+    );
+  }
+  return (
+    <Paper>
+      <CardHeader
+        sx={{
+          '& .MuiCardHeader-content': {
+            overflow: 'hidden',
+          },
+        }}
+        avatar={<Avatar />}
+        title={'----'}
+        subheader={`No last update`}
+      />
+    </Paper>
+  );
 }

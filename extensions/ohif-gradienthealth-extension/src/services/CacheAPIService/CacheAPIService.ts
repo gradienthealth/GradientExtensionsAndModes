@@ -17,14 +17,13 @@ const LOCAL_EVENTS = {
 export default class CacheAPIService {
   listeners: { [key: string]: Function[] };
   EVENTS: { [key: string]: string };
-  element: HTMLElement;
+  element?: HTMLElement;
   private servicesManager;
   private commandsManager;
   private extensionManager;
   private dataSource;
-  private options;
-  public storageUsage;
-  public storageQuota;
+  public storageUsage?: number;
+  public storageQuota?: number;
   private imageIdToFileUriMap;
 
   constructor(servicesManager, commandsManager, extensionManager) {
@@ -33,8 +32,6 @@ export default class CacheAPIService {
     this.servicesManager = servicesManager;
     this.commandsManager = commandsManager;
     this.extensionManager = extensionManager;
-    this.storageUsage = null;
-    this.storageQuota = null;
     this.imageIdToFileUriMap = new Map();
     Object.assign(this, pubSubServiceInterface);
   }
@@ -51,15 +48,17 @@ export default class CacheAPIService {
 
     if (window?.navigator?.storage?.estimate) {
       window?.navigator?.storage?.estimate().then((estimate) => {
-        console.log(
-          'Storage use: ',
-          estimate.usage * 1e-9,
-          ' of ',
-          estimate.quota * 1e-9,
-          ' GB'
-        );
-        this.storageUsage = estimate.usage;
-        this.storageQuota = estimate.quota;
+        if (estimate.quota && estimate.usage) {
+          console.log(
+            'Storage use: ',
+            estimate.usage * 1e-9,
+            ' of ',
+            estimate.quota * 1e-9,
+            ' GB'
+          );
+          this.storageUsage = estimate.usage;
+          this.storageQuota = estimate.quota;
+        }
       });
     }
 
@@ -89,7 +88,7 @@ export default class CacheAPIService {
     }
   }
 
-  public async setViewedStudy(StudyInstanceUID) {
+  public async setViewedStudy(StudyInstanceUID: string) {
     await this.dataSource.retrieve.series.metadata({ StudyInstanceUID });
     /* The getScope handling is not exist anymore in the cornerstone3D
     const study = DicomMetadataStore.getStudy(StudyInstanceUID);
@@ -128,10 +127,10 @@ export default class CacheAPIService {
   }
 
   public async cacheStudy(
-    StudyInstanceUID,
-    SeriesInstanceUIDs = [],
-    buckets = [],
-    bucketPrefix = null
+    StudyInstanceUID: string,
+    SeriesInstanceUIDs: string[] = [],
+    buckets: string[] = [],
+    bucketPrefix?: string
   ) {
     const { sopClassUids: segSOPClassUIDs } =
       this.extensionManager.getModuleEntry(
@@ -159,7 +158,10 @@ export default class CacheAPIService {
     ]);
   }
 
-  public async cacheSeries(StudyInstanceUID, SeriesInstanceUID) {
+  public async cacheSeries(
+    StudyInstanceUID: string,
+    SeriesInstanceUID: string
+  ) {
     await this.dataSource.retrieve.series.metadata({ StudyInstanceUID });
     const study = DicomMetadataStore.getStudy(StudyInstanceUID);
     const imageIds = study.series
@@ -170,7 +172,7 @@ export default class CacheAPIService {
     this.cacheImageIds(imageIds);
   }
 
-  public async cacheImageIds(imageIds) {
+  public async cacheImageIds(imageIds: string[]) {
     const options = {
       preScale: { enabled: true },
       useRGBA: false,
@@ -207,7 +209,7 @@ export default class CacheAPIService {
     await Promise.all(taskPromises);
   }
 
-  public async cacheSegFiles(studyInstanceUID) {
+  public async cacheSegFiles(studyInstanceUID: string) {
     const segSOPClassUIDs = ['1.2.840.10008.5.1.4.1.1.66.4'];
     const { displaySetService, userAuthenticationService } =
       this.servicesManager.services;
@@ -243,7 +245,7 @@ export default class CacheAPIService {
     await Promise.all(promises);
   }
 
-  public updateCachedFile(blob, displaySet) {
+  public updateCachedFile(blob: Blob, displaySet) {
     const { url, imageId } = displaySet.instances[0];
     const fileUri = wadouri.fileManager.add(blob);
     displaySet.instance.imageId = fileUri;
@@ -256,7 +258,7 @@ export default class CacheAPIService {
     }
   }
 
-  public async cacheMissingStudyImageIds(StudyInstanceUIDs) {
+  public async cacheMissingStudyImageIds(StudyInstanceUIDs: string[]) {
     const existingKeys = await window.caches.keys();
     const existingStudyInstanceUIDs = existingKeys.map(
       (key) => key.split('studies/')[1].split('/')[0]
@@ -274,7 +276,7 @@ export default class CacheAPIService {
    * @param evt
    * @returns
    */
-  private async handleQuotaExceededWriteError(evt) {
+  private async handleQuotaExceededWriteError() {
     const scopes = await window.caches.keys();
     scopes.forEach(async (scope) => {
       try {
@@ -284,7 +286,7 @@ export default class CacheAPIService {
         const utctime = k[0].headers.get('dicom-last-put-date');
         const date = utctime ? new Date(utctime) : new Date();
         const timeNow = new Date();
-        const timeSincePut = timeNow - date;
+        const timeSincePut = timeNow.getTime() - date.getTime();
         const millisecondsInDay = 8.64e7;
         if (
           lastViewed !== 'undefined' ||

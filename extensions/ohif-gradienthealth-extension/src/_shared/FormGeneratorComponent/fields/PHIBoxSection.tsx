@@ -7,7 +7,21 @@ import { useSystem } from '@ohif/core';
 
 import { getMeasurementImageCoordinates } from '../../../utils/phiBoundingBoxMeasurementUtils';
 
-export default function PHIBoxSection({ formIndex, name, value, onChange }) {
+export default function PHIBoxSection({
+  formIndex,
+  name,
+  onChange,
+}: {
+  formIndex: number;
+  name: string;
+  onChange: ({
+    formIndex,
+    value,
+  }: {
+    formIndex: number;
+    value: string;
+  }) => void;
+}) {
   const { servicesManager } = useSystem();
   const { measurementService, toolGroupService, viewportGridService } =
     servicesManager.services;
@@ -57,7 +71,7 @@ export default function PHIBoxSection({ formIndex, name, value, onChange }) {
   };
 
   // Find the tool configuration
-  const phiBoundingBoxTool = toolbarButtons.find(
+  const phiBoundingBoxTool = (toolbarButtons as ToolButton[]).find(
     (b) => b.id === phiBoundingBoxToolName
   );
   const { commands, icon, label, isActive } =
