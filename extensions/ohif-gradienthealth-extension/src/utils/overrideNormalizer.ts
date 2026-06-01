@@ -98,8 +98,8 @@ function getHandledSingleImageDataset(dataset) {
     SharedFunctionalGroupsSequence: {
       PlaneOrientationSequence: {
         ImageOrientationPatient: dataset.ImageOrientationPatient || [
-          ...rowCosines,
-          ...columnCosines,
+          ...RowCosines,
+          ...ColumnCosines,
         ],
       },
       PixelMeasuresSequence: {
@@ -119,8 +119,8 @@ function getHandledSingleImageDataset(dataset) {
         : PerFrameFunctionalGroupsSequence,
     NumberOfFrames: dataset.NumberOfFrames || 1,
     ImageOrientationPatient: dataset.ImageOrientationPatient || [
-      ...rowCosines,
-      ...columnCosines,
+      ...RowCosines,
+      ...ColumnCosines,
     ],
     ImagePositionPatient: dataset.ImagePositionPatient || [0, 0, 0],
   };

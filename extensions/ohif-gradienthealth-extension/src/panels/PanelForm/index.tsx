@@ -19,12 +19,18 @@ function usePrevious(value) {
 }
 
 function PanelForm({ servicesManager, extensionManager }) {
-  const { GoogleSheetsService, MeasurementService } = servicesManager.services
-  const [formTemplate, setFormTemplate] = useState(GoogleSheetsService.getFormTemplate());
-  const [formValue, setFormValue] = useState(GoogleSheetsService.getFormValue());
+  const { GoogleSheetsService, MeasurementService } = servicesManager.services;
+  const [formTemplate, setFormTemplate] = useState(
+    GoogleSheetsService.getFormTemplate()
+  );
+  const [formValue, setFormValue] = useState(
+    GoogleSheetsService.getFormValue()
+  );
   const [error, setError] = useState(false);
   const [firstLoad, setFirstLoad] = useState(true);
-  const [initLoading, setInitLoading] = useState(!Boolean(formValue && formTemplate));
+  const [initLoading, setInitLoading] = useState(
+    !Boolean(formValue && formTemplate)
+  );
   const [loading, setLoading] = useState(false);
   const onNext = () => {
     cleanUpMeasurements();
@@ -36,7 +42,9 @@ function PanelForm({ servicesManager, extensionManager }) {
   };
   const debouncedOnNext = useMemo(() => debounce(onNext, 300), []);
   const debouncedOnPrevious = useMemo(() => debounce(onPrevious, 300), []);
-  let machineEventSender;
+  let machineEventSender:
+    | ((event: string, details: Record<string, any>) => void)
+    | undefined;
   try {
     const utilityModule = extensionManager.getModuleEntry(
       '@ohif/extension-measurement-tracking.utilityModule.measurement-tracking'
@@ -49,35 +57,42 @@ function PanelForm({ servicesManager, extensionManager }) {
   }
 
   useEffect(() => {
-    const subscriptions = [];
+    const subscriptions: (() => void)[] = [];
     subscriptions.push(
-      GoogleSheetsService.subscribe(GoogleSheetsService.EVENTS.GOOGLE_SHEETS_CHANGE, () => {
-        setFirstLoad(true)
-        setFormValue(GoogleSheetsService.getFormValue())
-        setFormTemplate(GoogleSheetsService.getFormTemplate())
-        setInitLoading(false)
-      }).unsubscribe
+      GoogleSheetsService.subscribe(
+        GoogleSheetsService.EVENTS.GOOGLE_SHEETS_CHANGE,
+        () => {
+          setFirstLoad(true);
+          setFormValue(GoogleSheetsService.getFormValue());
+          setFormTemplate(GoogleSheetsService.getFormTemplate());
+          setInitLoading(false);
+        }
+      ).unsubscribe
     );
 
     subscriptions.push(
-      GoogleSheetsService.subscribe(GoogleSheetsService.EVENTS.GOOGLE_SHEETS_ERROR, () => {
-        setError(true)
-      }).unsubscribe
+      GoogleSheetsService.subscribe(
+        GoogleSheetsService.EVENTS.GOOGLE_SHEETS_ERROR,
+        () => {
+          setError(true);
+        }
+      ).unsubscribe
     );
-    return () => { subscriptions.forEach(unsub=>unsub()) };
+    return () => {
+      subscriptions.forEach((unsub) => unsub());
+    };
   }, [GoogleSheetsService]);
 
   useEffect(() => {
-    if(!firstLoad){
-      setLoading(true)
-      GoogleSheetsService.updateRow(formValue).then((values)=>{
-        setLoading(false)
-      })
+    if (!firstLoad) {
+      setLoading(true);
+      GoogleSheetsService.updateRow(formValue).then(() => {
+        setLoading(false);
+      });
     }
-    setFirstLoad(false)
+    setFirstLoad(false);
   }, [formValue]);
 
-  
   function cleanUpMeasurements() {
     if (machineEventSender) {
       machineEventSender('UNTRACK_ALL', {});
@@ -86,29 +101,37 @@ function PanelForm({ servicesManager, extensionManager }) {
     }
   }
 
-  if(error){
+  if (error) {
     return (
-      <Paper sx={{ display: 'flex' }} className='p-2'>
-          <Typography sx={{ fontSize: 14, marginRight: 1 }} color="text.secondary" gutterBottom>
-            { "There was an error connecting to Google Sheets." }
-          </Typography>
+      <Paper sx={{ display: 'flex' }} className="p-2">
+        <Typography
+          sx={{ fontSize: 14, marginRight: 1 }}
+          color="text.secondary"
+          gutterBottom
+        >
+          {'There was an error connecting to Google Sheets.'}
+        </Typography>
       </Paper>
-    )
+    );
   }
 
-  if(!initLoading){
+  if (!initLoading) {
     return (
-      <> 
-        <div style={{color:"white", overflow: "auto"}}>
-            { loading ? <LinearProgress/> : <div style={{height: '4px'}}></div> }
-            <FormGeneratorComponent
-                formTemplate={formTemplate} 
-                formValue={formValue}
-                setFormValue={setFormValue}/>
+      <>
+        <div style={{ color: 'white', overflow: 'auto' }}>
+          {loading ? <LinearProgress /> : <div style={{ height: '4px' }}></div>}
+          <FormGeneratorComponent
+            formTemplate={formTemplate}
+            formValue={formValue}
+            setFormValue={setFormValue}
+          />
         </div>
         <div className="flex justify-center p-4">
           <Paper>
-            <ButtonGroup variant="contained" aria-label="outlined primary button group">
+            <ButtonGroup
+              variant="contained"
+              aria-label="outlined primary button group"
+            >
               <LoadingButton
                 loading={loading}
                 loadingPosition="start"
@@ -133,16 +156,15 @@ function PanelForm({ servicesManager, extensionManager }) {
           </Paper>
         </div>
       </>
-    )
+    );
   }
-  
-  return <LinearProgress/>
+
+  return <LinearProgress />;
 }
 
 PanelForm.propTypes = {
   servicesManager: PropTypes.shape({
-    services: PropTypes.shape({
-    }).isRequired,
+    services: PropTypes.shape({}).isRequired,
   }).isRequired,
 };
 
