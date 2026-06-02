@@ -4,13 +4,35 @@ import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import debounce from 'lodash.debounce';
 
-export default function Textarea({formIndex, name, value, defaultValue, options, onChange}) {
-  const [val, setVal] = React.useState(value ?? defaultValue ?? '');  
-  const { rows } = options
+export default function Textarea({
+  formIndex,
+  name,
+  value,
+  defaultValue,
+  options,
+  onChange,
+}: {
+  formIndex: number;
+  name: string;
+  value: string | null;
+  defaultValue: string | null;
+  options: Record<string, any>;
+  onChange: ({
+    formIndex,
+    value,
+  }: {
+    formIndex: number;
+    value: string;
+  }) => void;
+}) {
+  const [val, setVal] = React.useState(value ?? defaultValue ?? '');
+  const { rows } = options;
   const debouncedOnChange = useMemo(
-    () => debounce((formIndex, value) => {
-      onChange({formIndex, value})
-    }, 600), [onChange]
+    () =>
+      debounce((formIndex: number, value: string) => {
+        onChange({ formIndex, value });
+      }, 600),
+    [onChange]
   );
 
   React.useEffect(() => {
@@ -19,17 +41,17 @@ export default function Textarea({formIndex, name, value, defaultValue, options,
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setVal(event.target.value);
-    debouncedOnChange(formIndex, event.target.value)
+    debouncedOnChange(formIndex, event.target.value);
   };
 
   return (
-    <Paper className='p-2'>
+    <Paper className="p-2">
       <TextField
         id="outlined-multiline-flexible"
-        inputProps={{style: {fontSize: '0.75em'}}}
+        inputProps={{ style: { fontSize: '0.75em' } }}
         label={name}
         multiline
-        rows={ rows }
+        rows={rows}
         value={val}
         fullWidth={true}
         margin={'dense'}

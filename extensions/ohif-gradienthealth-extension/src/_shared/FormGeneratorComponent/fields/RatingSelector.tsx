@@ -4,36 +4,64 @@ import Paper from '@mui/material/Paper';
 import StarIcon from '@mui/icons-material/Star';
 import Typography from '@mui/material/Typography';
 
-export default function RatingSelector({ formIndex, name, value, defaultValue, options, onChange }) {
-  const { labels, precision, max } = options
+export default function RatingSelector({
+  formIndex,
+  name,
+  value,
+  defaultValue,
+  options,
+  onChange,
+}: {
+  formIndex: number;
+  name: string;
+  value: string | null;
+  defaultValue: string | null;
+  options: Record<string, any>;
+  onChange: ({
+    formIndex,
+    value,
+  }: {
+    formIndex: number;
+    value: string;
+  }) => void;
+}) {
+  const { labels, precision, max } = options;
 
-  const getKeyFromValue = (v)=>{
-    if(v == null) return null
+  const getKeyFromValue = (v: string | null) => {
+    if (v == null) return null;
 
-    const obj = Object.keys(labels).map((key, idx)=>{
-      return {key: key, value: labels[key].value}
-    }).find((ele)=>{
-      return ele.value == v
-    })
+    const obj = Object.keys(labels)
+      .map((key) => {
+        return { key: key, value: labels[key].value };
+      })
+      .find((ele) => {
+        return ele.value == v;
+      });
 
-    if(obj) return Number(obj.key)
-    return null
-  }
+    if (obj) return Number(obj.key);
+    return null;
+  };
 
-  const [val, setVal] = React.useState(value !== null ? getKeyFromValue(value): getKeyFromValue(defaultValue));  
+  const [val, setVal] = React.useState<string>(
+    value !== null ? getKeyFromValue(value) : getKeyFromValue(defaultValue)
+  );
   const [hover, setHover] = React.useState(-1);
 
   return (
-    <Paper className='p-2'>
+    <Paper className="p-2">
       <div>
         <Typography sx={{ fontSize: 14 }} color="text.secondary" gutterBottom>
-          { name }
+          {name}
         </Typography>
         <Typography variant="h6" component="div">
-          { (val !== null || hover !== -1) ? labels[hover !== -1 ? hover : val].value : '?' }
+          {val !== null || hover !== -1
+            ? labels[hover !== -1 ? hover : val].value
+            : '?'}
         </Typography>
         <Typography variant="body2">
-          { (val !== null || hover !== -1) ? labels[hover !== -1 ? hover : val].description : 'Please Select'}
+          {val !== null || hover !== -1
+            ? labels[hover !== -1 ? hover : val].description
+            : 'Please Select'}
         </Typography>
       </div>
       <Rating
@@ -41,11 +69,14 @@ export default function RatingSelector({ formIndex, name, value, defaultValue, o
         value={val}
         precision={precision}
         max={max}
-        onChange={(event, newValue) => {
-          onChange({ formIndex: formIndex, value: newValue ? labels[newValue].value : newValue })
+        onChange={(newValue) => {
+          onChange({
+            formIndex: formIndex,
+            value: newValue ? labels[newValue].value : newValue,
+          });
           setVal(newValue);
         }}
-        onChangeActive={(event, newHover) => {
+        onChangeActive={(newHover) => {
           setHover(newHover);
         }}
         emptyIcon={<StarIcon style={{ opacity: 0.55 }} fontSize="inherit" />}

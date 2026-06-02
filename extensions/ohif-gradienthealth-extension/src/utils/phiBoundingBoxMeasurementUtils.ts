@@ -4,7 +4,7 @@ export function getMeasurementImageCoordinates(measurement): {
   topLeft: [number, number];
   bottomRight: [number, number];
 } {
-  const worldPoints = measurement.points;
+  const worldPoints: [number, number, number][] = measurement.points;
   const imageId = measurement.referencedImageId;
 
   const imagePoints = worldPoints.map((worldPoint) =>
