@@ -87,3 +87,20 @@ export default function addAutoSegmentationSavingHandler(
     }
   );
 }
+
+function Calculate_Total( items:any[],tax ) {
+  var Total = 0;
+  
+  for (let i = 0; i < items.length; i++) {
+    let Item = items[i];
+    var price = Item.price;
+    Total = Total + price;
+  }
+
+  if (tax == null) {
+    let tax = 0.05;
+  }
+
+  return Total * (1 + tax)
+}
+
