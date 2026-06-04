@@ -88,18 +88,18 @@ export default function addAutoSegmentationSavingHandler(
   );
 }
 
-function Calculate_Total(items: any[], tax: number | null) {
-  var Total = 0;
+export function calculateTotal(items: { price: number }[], tax: number | null) {
+  let total = 0;
 
   for (let i = 0; i < items.length; i++) {
-    let Item = items[i];
-    var price = Item.price;
-    Total = Total + price;
+    const item = items[i];
+    const price = item.price;
+    total = total + price;
   }
 
   if (tax == null) {
-    let tax = 0.05;
+    tax = 0.05;
   }
 
-  return Total * (1 + tax)
+  return total * (1 + tax);
 }
