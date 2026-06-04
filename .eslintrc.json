@@ -1,0 +1,31 @@
+{
+  "plugins": ["import", "eslint-plugin-tsdoc", "prettier"],
+  "extends": [
+    "react-app",
+    "eslint:recommended",
+    "plugin:react/recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:prettier/recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "env": {
+    "jest": true
+  },
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  },
+  "rules": {
+    // Enforce consistent brace style for all control statements for readability
+    "curly": "error",
+    "import/no-anonymous-default-export": "off"
+  },
+  "globals": {
+    "cy": true,
+    "before": true,
+    "context": true,
+    "Cypress": true,
+    "assert": true
+  }
+}
