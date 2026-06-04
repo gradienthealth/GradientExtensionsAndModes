@@ -1,0 +1,75 @@
+name: Lint Check
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches:
+      - nightly
+      - production
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 20
+
+      - name: Install Linting Libraries
+        # Installs packages directly into node_modules without requiring package.json
+        run: >
+          npm install --no-save
+          eslint@8 eslint-plugin-diff
+          prettier eslint-plugin-prettier eslint-config-prettier
+          eslint-config-react-app eslint-plugin-react eslint-plugin-react-hooks eslint-plugin-jsx-a11y eslint-plugin-import
+          @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-plugin-tsdoc
+          @babel/core @babel/eslint-parser
+          eslint-plugin-jest eslint-plugin-testing-library eslint-plugin-flowtype
+
+      - name: Deduplicate TypeScript Plugin
+        # Forces ESLint to only use the root-level plugin by deleting the nested one
+        run: rm -rf node_modules/eslint-config-react-app/node_modules/@typescript-eslint
+
+      - name: Run ESLint strictly on Changed Lines (Blocking)
+        run: |
+          # 1. Create a temporary config that inherits your copied base config
+          # but applies the 'diff/ci' mode to filter output to changed lines only
+          echo '{ "extends": ["./.eslintrc.json", "plugin:diff/ci"] }' > .eslintrc.diff.json
+
+          # 2. Determine the target commit for the git diff comparison
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            export ESLINT_PLUGIN_DIFF_COMMIT="${{ github.event.pull_request.base.sha }}"
+          else
+            BEFORE_COMMIT="${{ github.event.before }}"
+
+            if [ "$BEFORE_COMMIT" = "0000000000000000000000000000000000000000" ]; then
+              # Pushing a brand new branch
+              export ESLINT_PLUGIN_DIFF_COMMIT="HEAD~1"
+            else
+              # Verify if the 'before' commit actually exists and is accessible as a commit object
+              if git cat-file -e "${BEFORE_COMMIT}^{commit}" 2>/dev/null; then
+                export ESLINT_PLUGIN_DIFF_COMMIT="$BEFORE_COMMIT"
+              else
+                # Fallback for force pushes or rebases where the old commit is gone
+                echo "Warning: Commit $BEFORE_COMMIT not found locally. Falling back to HEAD~1"
+                export ESLINT_PLUGIN_DIFF_COMMIT="HEAD~1"
+              fi
+            fi
+          fi
+
+          # 3. Execute ESLint across the codebase using the temporary diff config via npx
+          npx eslint --max-warnings=0 --config .eslintrc.diff.json --ext .js,.jsx,.ts,.tsx .
