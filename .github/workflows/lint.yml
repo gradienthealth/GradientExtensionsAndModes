@@ -60,8 +60,8 @@ jobs:
               # Pushing a brand new branch
               export ESLINT_PLUGIN_DIFF_COMMIT="HEAD~1"
             else
-              # Verify if the 'before' commit actually exists in the local checkout
-              if git rev-parse --verify --quiet "$BEFORE_COMMIT" > /dev/null; then
+              # Verify if the 'before' commit actually exists and is accessible as a commit object
+              if git cat-file -e "${BEFORE_COMMIT}^{commit}" 2>/dev/null; then
                 export ESLINT_PLUGIN_DIFF_COMMIT="$BEFORE_COMMIT"
               else
                 # Fallback for force pushes or rebases where the old commit is gone
