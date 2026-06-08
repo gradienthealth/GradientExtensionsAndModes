@@ -34,16 +34,28 @@ export function addAutoPHIBoundingBoxToolLabeler(servicesManager) {
         return;
       }
 
-      const phiMeasurementsCount = measurementService.getMeasurements(
-        (m) => m.toolName === phiBoundingBoxToolName
-      ).length;
+      const otherPhiMeasurements = measurementService.getMeasurements(
+        // Exclude the current measurement to avoid self-referencing during the add event
+        (m) =>
+          m.toolName === phiBoundingBoxToolName && m.uid !== measurement.uid
+      );
+
+      const usedIndices = new Set();
+      otherPhiMeasurements.forEach((m) => {
+        const match = m.label && m.label.match(/PHI Bounding Box (\d+)/);
+        if (match) {
+          usedIndices.add(parseInt(match[1], 10));
+        }
+      });
+
+      let nextIndex = 1;
+      while (usedIndices.has(nextIndex)) {
+        nextIndex++;
+      }
 
       measurementService.update(
         measurement.uid,
-        {
-          ...measurement,
-          label: `PHI Bounding Box ${phiMeasurementsCount}`,
-        },
+        { ...measurement, label: `PHI Bounding Box ${nextIndex}` },
         true
       );
     }
